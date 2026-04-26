@@ -1,0 +1,106 @@
+# 日历 (Calendar) 测试集
+# 运行前请将 <<TEST_CONTACT>> 替换为真实存在的联系人名称
+
+cases:
+
+  # ── L1 单步 ──────────────────────────────────────────────────────────────
+
+  - id: CAL_L1_001
+    level: L1
+    title: 导航到日历页面
+    task: "点击飞书左侧导航栏中的「日历」图标，进入日历主页。"
+    preconditions:
+      - 飞书已登录
+    success_criteria: "日历主页面显示，可见当月或当周日历视图"
+    checkpoints:
+      - "左侧导航「日历」图标高亮"
+      - "主区域显示日历网格（日期格子可见）"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [calendar, navigation, smoke]
+
+  # ── L2 多步单产品 ─────────────────────────────────────────────────────────
+
+  - id: CAL_L2_001
+    level: L2
+    title: 创建今天的日程
+    task: >
+      进入飞书日历页面，
+      点击今天日期格子或「新建日程」按钮，
+      在创建日程表单中：标题填写「CUA-Lark 自动化测试日程」，
+      时间设置为今天下午 3 点到 4 点，
+      保存日程。
+    preconditions:
+      - 飞书已登录
+      - 有日历写权限
+    success_criteria: "日历中今天的时间格出现「CUA-Lark 自动化测试日程」日程块"
+    checkpoints:
+      - "日程创建表单已打开"
+      - "标题输入框显示「CUA-Lark 自动化测试日程」"
+      - "时间设置为今天 15:00-16:00"
+      - "保存后日历视图中出现该日程块"
+    expected_steps: 8
+    timeout_steps: 18
+    tags: [calendar, create, core]
+
+  - id: CAL_L2_002
+    level: L2
+    title: 创建日程并邀请参会人
+    task: >
+      进入飞书日历，新建日程：
+      标题「CUA-Lark 团队会议测试」，
+      时间为明天上午 10 点到 11 点，
+      在参会人一栏搜索并添加「<<TEST_CONTACT>>」，
+      保存并发送邀请。
+    preconditions:
+      - 飞书已登录
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+    success_criteria: "日程保存成功，参会人列表中包含「<<TEST_CONTACT>>」"
+    checkpoints:
+      - "日程创建表单已打开"
+      - "参会人搜索结果中找到「<<TEST_CONTACT>>」"
+      - "参会人已添加到日程表单"
+      - "日程保存成功后在日历视图可见"
+    expected_steps: 10
+    timeout_steps: 22
+    tags: [calendar, create, invite, core]
+
+  - id: CAL_L2_003
+    level: L2
+    title: 查找并编辑已有日程
+    task: >
+      在飞书日历中找到标题为「CUA-Lark 自动化测试日程」的日程，
+      点击打开该日程，
+      将标题修改为「CUA-Lark 自动化测试日程（已修改）」，
+      保存修改。
+    preconditions:
+      - 飞书已登录
+      - 存在标题为「CUA-Lark 自动化测试日程」的日程（由 CAL_L2_001 创建）
+    success_criteria: "日程标题已更新为「CUA-Lark 自动化测试日程（已修改）」"
+    checkpoints:
+      - "点击日程后打开详情或编辑视图"
+      - "标题输入框中原内容已清除，显示新标题"
+      - "保存后日历视图中日程块显示新标题"
+    expected_steps: 7
+    timeout_steps: 18
+    tags: [calendar, edit, update]
+
+  - id: CAL_L2_004
+    level: L2
+    title: 删除日程
+    task: >
+      在飞书日历中找到标题含「CUA-Lark」的测试日程，
+      打开该日程，
+      点击删除按钮，
+      确认删除操作。
+    preconditions:
+      - 飞书已登录
+      - 存在至少一个标题含「CUA-Lark」的日程
+    success_criteria: "日程已从日历视图中消失"
+    checkpoints:
+      - "日程详情页面已打开"
+      - "出现删除确认弹窗"
+      - "确认后日历视图中该日程块消失"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [calendar, delete]

@@ -1,0 +1,182 @@
+# IM (即时通讯) 测试集
+# 运行前请将 <<TEST_CONTACT>> 替换为你飞书账号中真实存在的联系人名称
+# 运行前请将 <<TEST_GROUP>> 替换为真实存在的群聊名称（如 CUA-Lark课题-6）
+
+cases:
+
+  # ── L1 单步 ──────────────────────────────────────────────────────────────
+
+  - id: IM_L1_001
+    level: L1
+    title: 导航到消息页面
+    task: "点击飞书左侧导航栏中的「消息」图标，进入 IM 消息页面。"
+    preconditions:
+      - 飞书桌面客户端已登录并处于前台
+    success_criteria: "飞书主界面左侧「消息」图标高亮，右侧显示会话列表"
+    checkpoints:
+      - "左侧导航栏「消息」图标呈选中/高亮状态"
+      - "右侧主区域显示会话列表（包含群聊或单聊条目）"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [navigation, smoke]
+
+  - id: IM_L1_002
+    level: L1
+    title: 使用快捷键打开全局搜索
+    task: "使用 Ctrl+K 打开飞书全局搜索框。"
+    preconditions:
+      - 飞书桌面客户端已登录并处于前台
+    success_criteria: "全局搜索框弹出并处于输入焦点状态"
+    checkpoints:
+      - "屏幕中央或顶部出现搜索输入框"
+      - "搜索框内有光标或占位提示文字"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [navigation, shortcut, smoke]
+
+  # ── L2 多步单产品 ─────────────────────────────────────────────────────────
+
+  - id: IM_L2_001
+    level: L2
+    title: 搜索联系人并发送文本消息
+    task: >
+      在飞书 IM 中，使用 Ctrl+K 全局搜索联系人「<<TEST_CONTACT>>」，
+      进入与该联系人的单聊界面，
+      在消息输入框输入「【自动化测试】CUA-Lark Agent 单聊消息测试」，
+      然后按回车发送。
+    preconditions:
+      - 飞书已登录
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+    success_criteria: "聊天记录最底部出现发送内容的消息气泡"
+    checkpoints:
+      - "搜索结果中出现联系人「<<TEST_CONTACT>>」"
+      - "进入与该联系人的单聊界面，顶部显示联系人名称"
+      - "消息气泡出现在聊天记录底部，内容包含「CUA-Lark Agent」"
+    expected_steps: 5
+    timeout_steps: 12
+    tags: [im, send_message, core]
+
+  - id: IM_L2_002
+    level: L2
+    title: 在群聊中发送消息并 @ 成员
+    task: >
+      进入飞书群聊「<<TEST_GROUP>>」，
+      在消息输入框输入「@」后选择群内第一个成员，
+      然后继续输入「【自动化测试】@提及功能验证」，
+      按回车发送。
+    preconditions:
+      - 飞书已登录
+      - 群聊「<<TEST_GROUP>>」中有至少 2 名成员
+    success_criteria: "消息气泡出现，包含 @ 提及和测试文本"
+    checkpoints:
+      - "进入群聊「<<TEST_GROUP>>」界面"
+      - "输入 @ 后出现成员选择下拉列表"
+      - "发送后消息气泡底部包含蓝色 @ 提及文字"
+    expected_steps: 7
+    timeout_steps: 15
+    tags: [im, mention, group]
+
+  - id: IM_L2_003
+    level: L2
+    title: 创建新群聊并设置群名
+    task: >
+      在飞书 IM 页面，点击会话列表右上角的新建图标，
+      选择「创建群组」，
+      添加成员「<<TEST_CONTACT>>」，
+      将群名称设置为「CUA-Lark 自动化测试群」，
+      完成创建。
+    preconditions:
+      - 飞书已登录
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+    success_criteria: "新群聊创建成功，群名为「CUA-Lark 自动化测试群」"
+    checkpoints:
+      - "出现创建群组的对话框或页面"
+      - "成员搜索结果中找到「<<TEST_CONTACT>>」并已添加"
+      - "群名输入框中显示「CUA-Lark 自动化测试群」"
+      - "创建成功后进入群聊界面，顶部显示群名"
+    expected_steps: 8
+    timeout_steps: 18
+    tags: [im, create_group, core]
+
+  - id: IM_L2_004
+    level: L2
+    title: 转发消息到另一个会话
+    task: >
+      进入飞书群聊「<<TEST_GROUP>>」，
+      右键点击最新一条消息，
+      选择「转发」，
+      将消息转发到与「<<TEST_CONTACT>>」的单聊。
+    preconditions:
+      - 飞书已登录
+      - 群聊「<<TEST_GROUP>>」中有至少一条消息
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+    success_criteria: "消息成功转发，目标会话底部出现转发消息气泡"
+    checkpoints:
+      - "右键菜单中出现「转发」选项"
+      - "转发目标选择界面出现"
+      - "在目标单聊中出现带「转发」标记的消息气泡"
+    expected_steps: 8
+    timeout_steps: 18
+    tags: [im, forward, core]
+
+  - id: IM_L2_005
+    level: L2
+    title: 发送图片消息
+    task: >
+      进入飞书群聊「<<TEST_GROUP>>」，
+      点击消息输入框左侧的附件/图片图标，
+      上传本地任意一张图片，
+      发送图片消息。
+    preconditions:
+      - 飞书已登录
+      - 本地存在可上传的图片文件
+    success_criteria: "图片消息气泡出现在群聊记录底部"
+    checkpoints:
+      - "出现文件选择对话框"
+      - "选择图片后消息输入区域显示图片预览"
+      - "发送后群聊底部出现图片消息气泡"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [im, media, attachment]
+
+  # ── L3 跨产品联动 ─────────────────────────────────────────────────────────
+
+  - id: IM_L3_001
+    level: L3
+    title: 通过 IM 分享云文档链接
+    task: >
+      先进入飞书云文档页面，新建一个空白文档并命名为「共享测试文档」，
+      复制该文档的分享链接，
+      然后返回 IM，进入与「<<TEST_CONTACT>>」的单聊，
+      将链接粘贴到消息框并发送。
+    preconditions:
+      - 飞书已登录
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+      - 有云文档访问权限
+    success_criteria: "单聊底部出现包含云文档链接的消息，链接可预览"
+    checkpoints:
+      - "成功创建名为「共享测试文档」的云文档"
+      - "分享链接已复制到剪贴板（可通过粘贴验证）"
+      - "单聊消息气泡中包含飞书文档链接卡片"
+    expected_steps: 12
+    timeout_steps: 25
+    tags: [im, docs, cross_product, L3]
+
+  - id: IM_L3_002
+    level: L3
+    title: 通过 IM 分享日程邀请
+    task: >
+      先进入飞书日历，创建一个明天上午 10 点的日程，
+      标题为「CUA-Lark 自动化测试会议」，
+      复制日程链接或发起邀请，
+      然后切换到 IM，在群聊「<<TEST_GROUP>>」中发送该日程邀请。
+    preconditions:
+      - 飞书已登录
+      - 有日历写权限
+    success_criteria: "群聊底部出现日程卡片消息"
+    checkpoints:
+      - "日历中成功创建标题为「CUA-Lark 自动化测试会议」的日程"
+      - "群聊底部出现日程卡片，显示会议标题和时间"
+    expected_steps: 14
+    timeout_steps: 30
+    tags: [im, calendar, cross_product, L3]

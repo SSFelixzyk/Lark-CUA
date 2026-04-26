@@ -1,0 +1,159 @@
+# 云文档 (Docs) 测试集
+# 运行前请将 <<TEST_CONTACT>> 替换为真实存在的联系人名称
+
+cases:
+
+  # ── L1 单步 ──────────────────────────────────────────────────────────────
+
+  - id: DOC_L1_001
+    level: L1
+    title: 导航到云文档页面
+    task: "点击飞书左侧导航栏中的「云文档」图标，进入文档主页。"
+    preconditions:
+      - 飞书已登录
+    success_criteria: "云文档主页面显示，可见文档列表或「新建」按钮"
+    checkpoints:
+      - "左侧导航「云文档」图标高亮"
+      - "右侧显示文档列表区域或新建入口"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [docs, navigation, smoke]
+
+  - id: DOC_L1_002
+    level: L1
+    title: 新建空白文档
+    task: "在飞书云文档页面，点击「新建」按钮，创建一个空白文档。"
+    preconditions:
+      - 飞书已登录
+      - 当前在云文档主页
+    success_criteria: "空白文档编辑界面打开，光标在标题行"
+    checkpoints:
+      - "出现文档编辑界面"
+      - "标题区域可输入，正文区域为空"
+    expected_steps: 2
+    timeout_steps: 8
+    tags: [docs, create, smoke]
+
+  # ── L2 多步单产品 ─────────────────────────────────────────────────────────
+
+  - id: DOC_L2_001
+    level: L2
+    title: 新建文档并输入标题与正文
+    task: >
+      在飞书云文档页面新建一个空白文档，
+      在标题行输入「CUA-Lark 自动化测试文档」，
+      在正文区域输入「本文档由 CUA-Lark Agent 自动创建，用于端到端测试验证。」，
+      等待自动保存完成。
+    preconditions:
+      - 飞书已登录
+      - 有云文档写权限
+    success_criteria: "文档标题和正文内容已保存，顶部显示「已保存」状态"
+    checkpoints:
+      - "文档标题区域显示「CUA-Lark 自动化测试文档」"
+      - "正文区域显示测试文本内容"
+      - "顶部出现「已保存」或自动保存提示"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [docs, create, edit, core]
+
+  - id: DOC_L2_002
+    level: L2
+    title: 在文档中插入表格
+    task: >
+      打开飞书云文档「CUA-Lark 自动化测试文档」（若不存在则新建），
+      将光标定位到正文末尾，
+      通过插入菜单或「/」快捷命令插入一个 3 行 3 列的表格，
+      在第一行第一格输入「测试项」。
+    preconditions:
+      - 飞书已登录
+      - 存在可编辑的云文档
+    success_criteria: "文档中出现 3×3 表格，第一格内容为「测试项」"
+    checkpoints:
+      - "出现插入菜单或「/」命令面板"
+      - "文档中出现表格结构（可见行列格线）"
+      - "第一格显示「测试项」文字"
+    expected_steps: 8
+    timeout_steps: 18
+    tags: [docs, table, insert]
+
+  - id: DOC_L2_003
+    level: L2
+    title: 复制文档分享链接
+    task: >
+      打开飞书云文档「CUA-Lark 自动化测试文档」，
+      点击右上角「分享」按钮，
+      在分享设置中复制文档链接。
+    preconditions:
+      - 飞书已登录
+      - 存在名为「CUA-Lark 自动化测试文档」的云文档
+    success_criteria: "文档分享链接已复制到剪贴板"
+    checkpoints:
+      - "分享弹窗或侧边栏已打开"
+      - "出现「复制链接」按钮或链接输入框"
+      - "页面出现「复制成功」提示或按钮状态变化"
+    expected_steps: 5
+    timeout_steps: 12
+    tags: [docs, share, link]
+
+  - id: DOC_L2_004
+    level: L2
+    title: 在文档中 @ 提及联系人
+    task: >
+      打开飞书云文档「CUA-Lark 自动化测试文档」，
+      将光标定位到正文中，
+      输入「@」后搜索联系人「<<TEST_CONTACT>>」，
+      选择该联系人完成 @ 提及。
+    preconditions:
+      - 飞书已登录
+      - 存在可编辑的云文档
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+    success_criteria: "文档正文中出现蓝色 @ 提及链接"
+    checkpoints:
+      - "输入 @ 后出现联系人搜索下拉列表"
+      - "搜索结果中出现「<<TEST_CONTACT>>」"
+      - "文档中出现蓝色 @人名 提及标记"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [docs, mention, collaboration]
+
+  - id: DOC_L2_005
+    level: L2
+    title: 设置文档协作权限
+    task: >
+      打开飞书云文档「CUA-Lark 自动化测试文档」，
+      点击右上角「分享」或「权限」按钮，
+      将文档权限设置为「组织内成员可查看」。
+    preconditions:
+      - 飞书已登录
+      - 有该文档的所有者权限
+    success_criteria: "权限设置成功，显示「组织内成员可查看」状态"
+    checkpoints:
+      - "权限/分享设置面板已打开"
+      - "找到权限范围下拉框或选项"
+      - "权限设置成功并有确认提示"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [docs, permission, share]
+
+  # ── L3 跨产品联动 ─────────────────────────────────────────────────────────
+
+  - id: DOC_L3_001
+    level: L3
+    title: 新建文档后通过 IM 发送给联系人
+    task: >
+      在飞书云文档页面新建文档，标题输入「自动化共享文档-<<DATE>>」，
+      正文输入「由 CUA-Lark Agent 创建并共享」，
+      复制文档链接，
+      然后切换到 IM，搜索联系人「<<TEST_CONTACT>>」，
+      在单聊中发送消息「这是自动化测试创建的文档链接：」并粘贴链接后发送。
+    preconditions:
+      - 飞书已登录
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+    success_criteria: "单聊消息中出现文档链接卡片"
+    checkpoints:
+      - "云文档已创建并保存"
+      - "链接复制成功"
+      - "单聊底部出现包含飞书文档链接的消息气泡"
+    expected_steps: 14
+    timeout_steps: 28
+    tags: [docs, im, cross_product, L3]
