@@ -47,7 +47,7 @@ from agent.loop import LarkAgent
 
 # ── M1 test tasks ─────────────────────────────────────────────────────────────
 TASKS = [
-    "点击飞书左侧导航栏中的「消息」图标，进入 IM 页面",
+    "搜索CUA-Lark 自动化测试群，进入群聊，发送Hello",
 ]
 
 
@@ -85,4 +85,4 @@ def run_task(task: str, max_steps: int = 5):
 
 if __name__ == "__main__":
     task = sys.argv[1] if len(sys.argv) > 1 else TASKS[0]
-    run_task(task, max_steps=5)
+    run_task(task, max_steps=3)

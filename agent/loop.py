@@ -101,6 +101,7 @@ class LarkAgent:
                 break
 
             # 4. Execute
+            print(raw)
             exec_result = execute(raw)
 
             elapsed = int((time.time() - t0) * 1000)
@@ -131,6 +132,7 @@ class LarkAgent:
                 result.status = "failed"
                 break
             if exec_result["status"] == "error":
+                print(exec_result["error"])
                 result.status = "error"
                 break
 

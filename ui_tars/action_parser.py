@@ -9,6 +9,22 @@ MIN_PIXELS = 100 * 28 * 28
 MAX_PIXELS = 16384 * 28 * 28
 MAX_RATIO = 200
 
+# UI-TARS / some VLMs emit this even when the user prompt asks for plain (x,y).
+_BOX_COORD_IN_MARKERS = re.compile(
+    r"<\|box_start\|\>\s*\(([^)]+)\)\s*<\|box_end\|\>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _normalize_box_coordinate_string(value: str) -> str:
+    """Turn start_box='<|box_start|>(722,257)<|box_end|>' into '(722,257)' for parsing."""
+    if not value or "<|box_start|>" not in value.lower():
+        return value
+    m = _BOX_COORD_IN_MARKERS.search(value)
+    if m:
+        return f"({m.group(1).strip()})"
+    return value
+
 
 def convert_point_to_coordinates(text, is_answer=False):
     # 匹配 <bbox> 后面的四个数字
@@ -158,6 +174,7 @@ def parse_action_to_structure_output(text,
     if "point=" in text:
         text = text.replace("point=", "start_box=")
 
+
     if model_type == "qwen25vl":
         smart_resize_height, smart_resize_width = smart_resize(
             origin_resized_height,
@@ -231,13 +248,13 @@ def parse_action_to_structure_output(text,
             action_inputs[param_name.strip()] = param
 
             if "start_box" in param_name or "end_box" in param_name:
-                ori_box = param
+                ori_box = _normalize_box_coordinate_string(param)
                 numbers = ori_box.replace("(", "").replace(")", "").split(",")
 
                 if model_type == "qwen25vl":
                     float_numbers = []
                     for num_idx, num in enumerate(numbers):
-                        num = float(num)
+                        num = float(num.strip())
                         if (num_idx + 1) % 2 == 0:
                             float_numbers.append(
                                 float(num / smart_resize_height))
@@ -245,7 +262,7 @@ def parse_action_to_structure_output(text,
                             float_numbers.append(
                                 float(num / smart_resize_width))
                 else:
-                    float_numbers = [float(num) / factor for num in numbers]
+                    float_numbers = [float(num.strip()) / factor for num in numbers]
 
                 if len(float_numbers) == 2:
                     float_numbers = [

@@ -1,0 +1,79 @@
+# 视频会议 (Video Conferencing) 测试集
+# 加入会议场景可将 <<MEETING_ID>> 替换为真实会议号；若留空则依赖「发起会议」后同一客户端内操作
+
+cases:
+
+  # ── L1 单步 ──────────────────────────────────────────────────────────────
+
+  - id: VC_L1_001
+    level: L1
+    title: 导航到视频会议
+    task: "点击飞书左侧导航栏中的「视频会议」图标，进入视频会议主页。"
+    preconditions:
+      - 飞书已登录
+    success_criteria: "视频会议主页显示，可见「发起会议」「加入会议」等入口"
+    checkpoints:
+      - "左侧导航「视频会议」图标高亮"
+      - "主区域显示发起/加入会议按钮或近期会议列表"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [vc, navigation, smoke]
+
+  # ── L2 多步单产品 ─────────────────────────────────────────────────────────
+
+  - id: VC_L2_001
+    level: L2
+    title: 发起即时会议
+    task: >
+      在飞书视频会议页面，点击「发起会议」或「立即开会」，
+      在弹出的会议设置中保持默认或使用「电脑音频」，
+      进入会议房间，
+      确认已进入会议界面（看到会议控制栏）。
+    preconditions:
+      - 飞书已登录
+      - 本机麦克风/摄像头权限已授予（可被系统拒绝时以跳过硬件为准）
+    success_criteria: "会议窗口打开，底部或侧边显示麦克风、摄像头、共享等控制按钮"
+    checkpoints:
+      - "出现会议号或「会议中」状态提示"
+      - "可见挂断/离开会议按钮"
+    expected_steps: 5
+    timeout_steps: 15
+    tags: [vc, start_meeting, core]
+
+  - id: VC_L2_002
+    level: L2
+    title: 通过会议号加入会议
+    task: >
+      在飞书视频会议页面，点击「加入会议」，
+      在会议号输入框中输入「<<MEETING_ID>>」，
+      关闭「开启麦克风」「开启摄像头」选项（若界面提供），
+      点击加入，等待进入会议大厅或会议中界面。
+    preconditions:
+      - 飞书已登录
+      - 会议号「<<MEETING_ID>>」对应一场进行中的飞书会议（运行前替换占位符）
+    success_criteria: "成功进入会议界面或等待主持人准入的等待页"
+    checkpoints:
+      - "出现会议号输入界面"
+      - "加入后显示会议相关 UI（非错误弹窗）"
+    expected_steps: 5
+    timeout_steps: 15
+    tags: [vc, join_meeting]
+
+  - id: VC_L2_003
+    level: L2
+    title: 会议中开关摄像头与麦克风
+    task: >
+      在飞书内发起或加入一场会议并处于会议中界面，
+      点击工具栏上的「摄像头」图标，关闭摄像头，
+      再点击「麦克风」图标，静音麦克风，
+      最后再次点击两个图标，恢复摄像头开启与麦克风开启（若环境允许）。
+    preconditions:
+      - 飞书已登录
+      - 当前已在会议窗口中（可先执行发起会议或手动进入会议）
+    success_criteria: "摄像头与麦克风状态在 UI 上发生开/关变化（图标或文字提示）"
+    checkpoints:
+      - "点击后摄像头按钮显示为关闭状态"
+      - "点击后麦克风按钮显示为静音状态"
+    expected_steps: 4
+    timeout_steps: 12
+    tags: [vc, av_toggle, core]

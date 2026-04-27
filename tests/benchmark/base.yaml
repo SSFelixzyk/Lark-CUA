@@ -1,0 +1,103 @@
+# 多维表格 (Base / Bitable) 测试集
+# 运行前请将 <<TEST_CONTACT>> 替换为真实联系人（用于协作者场景，可选）
+
+cases:
+
+  # ── L1 单步 ──────────────────────────────────────────────────────────────
+
+  - id: BASE_L1_001
+    level: L1
+    title: 导航到多维表格
+    task: "点击飞书左侧导航栏中的「多维表格」图标，进入多维表格主页。"
+    preconditions:
+      - 飞书已登录
+    success_criteria: "多维表格主页面显示，可见「新建」或表格列表"
+    checkpoints:
+      - "左侧导航「多维表格」图标高亮"
+      - "主区域显示多维表格列表或新建入口"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [base, navigation, smoke]
+
+  # ── L2 多步单产品 ─────────────────────────────────────────────────────────
+
+  - id: BASE_L2_001
+    level: L2
+    title: 创建多维表格并命名
+    task: >
+      在飞书多维表格主页，点击「新建」或「新建多维表格」，
+      选择创建一个空白多维表格，
+      将表格标题设置为「CUA-Lark Base 自动化测试」，
+      确认进入数据表编辑界面。
+    preconditions:
+      - 飞书已登录
+      - 有多维表格创建权限
+    success_criteria: "进入表格编辑页，顶部标题为「CUA-Lark Base 自动化测试」"
+    checkpoints:
+      - "出现新建类型选择或直接进入编辑器"
+      - "默认存在至少一张数据表（表格视图）"
+      - "标题栏显示「CUA-Lark Base 自动化测试」"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [base, create, core]
+
+  - id: BASE_L2_002
+    level: L2
+    title: 添加表格字段
+    task: >
+      打开标题为「CUA-Lark Base 自动化测试」的多维表格（若不存在则先新建），
+      在表头最右侧点击「+」添加字段，
+      新建一列，字段名称为「备注」，类型选择「文本」，
+      保存字段。
+    preconditions:
+      - 飞书已登录
+      - 已存在可编辑的多维表格
+    success_criteria: "表头出现名为「备注」的文本列"
+    checkpoints:
+      - "出现添加字段对话框或内联编辑"
+      - "字段名称显示为「备注」"
+      - "类型为文本或单行文本"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [base, field, schema]
+
+  - id: BASE_L2_003
+    level: L2
+    title: 录入一行数据
+    task: >
+      在「CUA-Lark Base 自动化测试」多维表格的数据表中，
+      点击表格左下角或工具栏的「添加记录」/空白行，
+      在新行的第一列（或「名称」列）输入「自动化行-<<DATE>>」，
+      若有「备注」列则输入「CUA-Lark 录入测试」，
+      确认单元格内容已保存（失焦或回车）。
+    preconditions:
+      - 飞书已登录
+      - 已打开可编辑的多维表格
+    success_criteria: "表格中出现新行且单元格显示录入的文本"
+    checkpoints:
+      - "新增一行可见于表格视图"
+      - "至少一列显示「自动化行-」开头的文本或含日期的标识"
+    expected_steps: 5
+    timeout_steps: 14
+    tags: [base, data_entry, core]
+
+  - id: BASE_L2_004
+    level: L2
+    title: 切换表格视图
+    task: >
+      在「CUA-Lark Base 自动化测试」多维表格中，
+      确认当前为「表格」视图，
+      点击视图标签栏左侧的「+」或「添加视图」，
+      新建一个「看板」视图（若无看板则选择「表单」视图），
+      切换到新视图，再切换回「表格」视图。
+    preconditions:
+      - 飞书已登录
+      - 多维表格中至少有一条记录（便于看板分列）
+    success_criteria: "视图在表格与新建视图之间成功切换，主区域布局随之变化"
+    checkpoints:
+      - "出现视图类型选择列表"
+      - "新建视图后左侧或顶部视图标签中出现新视图名称"
+      - "切换回表格后显示行列网格"
+    expected_steps: 8
+    timeout_steps: 18
+    tags: [base, view, kanban]

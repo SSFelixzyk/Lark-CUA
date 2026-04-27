@@ -1,0 +1,88 @@
+# 邮箱 (Mail) 测试集
+# 运行前请将 <<TEST_CONTACT>> 替换为可收信的联系人邮箱或飞书邮箱标识
+
+cases:
+
+  # ── L1 单步 ──────────────────────────────────────────────────────────────
+
+  - id: MAIL_L1_001
+    level: L1
+    title: 导航到邮箱
+    task: "点击飞书左侧导航栏中的「邮箱」图标，进入飞书邮箱主页。"
+    preconditions:
+      - 飞书已登录
+      - 组织已开通飞书邮箱或已绑定邮箱账号
+    success_criteria: "邮箱主界面显示，可见收件箱与写信入口"
+    checkpoints:
+      - "左侧导航「邮箱」图标高亮"
+      - "主区域显示收件箱列表或「写邮件」按钮"
+    expected_steps: 1
+    timeout_steps: 5
+    tags: [mail, navigation, smoke]
+
+  # ── L2 多步单产品 ─────────────────────────────────────────────────────────
+
+  - id: MAIL_L2_001
+    level: L2
+    title: 撰写并发送邮件
+    task: >
+      在飞书邮箱点击「写邮件」或「新建」，
+      收件人填写「<<TEST_CONTACT>>」（若仅为姓名则选择联想出的邮箱地址），
+      主题填写「【CUA-Lark 自动化】邮件发送测试-<<DATE>>」，
+      正文输入「本邮件由 CUA-Lark Agent 场景测试发送。」，
+      点击「发送」，
+      确认出现发送成功提示或返回发件箱/已发送列表。
+    preconditions:
+      - 飞书已登录且邮箱可用
+      - 收件人地址有效或可解析为组织内用户
+    success_criteria: "邮件发送成功，已发送或提示发送完成"
+    checkpoints:
+      - "写邮件窗口中收件人与主题已填写"
+      - "正文包含测试文案"
+      - "发送后无失败错误弹窗"
+    expected_steps: 7
+    timeout_steps: 18
+    tags: [mail, compose, send, core]
+
+  - id: MAIL_L2_002
+    level: L2
+    title: 撰写邮件并添加附件
+    task: >
+      在飞书邮箱点击「写邮件」，
+      收件人填写「<<TEST_CONTACT>>」，
+      主题填写「【CUA-Lark 自动化】附件测试-<<DATE>>」，
+      点击「添加附件」或回形针图标，
+      从本机选择一个小于 10MB 的文件（如 txt 或图片），
+      确认附件出现在邮件编辑区，
+      不发送仅保存到草稿或发送（二选一：若选择发送则正文注明「附件测试」）。
+    preconditions:
+      - 飞书已登录且邮箱可用
+      - 本机有可选择的测试文件
+    success_criteria: "编辑区显示附件名称与大小，发送或保存草稿成功"
+    checkpoints:
+      - "出现文件选择对话框并完成选择"
+      - "邮件中列出附件文件名"
+    expected_steps: 8
+    timeout_steps: 20
+    tags: [mail, attachment, compose]
+
+  - id: MAIL_L2_003
+    level: L2
+    title: 回复收件箱中的邮件
+    task: >
+      在飞书邮箱进入「收件箱」，
+      打开任意一封未读或最近的邮件（优先选择主题含「CUA-Lark」的邮件），
+      点击「回复」或「全部回复」，
+      在回复正文顶部追加一行「【CUA-Lark 自动化】回复测试-<<DATE>>」，
+      点击发送。
+    preconditions:
+      - 飞书已登录且邮箱可用
+      - 收件箱中至少有一封可回复的邮件
+    success_criteria: "回复发送成功，会话线索中可见回复内容"
+    checkpoints:
+      - "进入单封邮件阅读视图"
+      - "回复编辑器打开且包含原信引用或空正文区"
+      - "发送后界面提示成功或返回列表"
+    expected_steps: 6
+    timeout_steps: 16
+    tags: [mail, reply, core]

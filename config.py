@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent / ".env")
 
-DOUBAO_API_KEY = os.environ["DOUBAO-API-KEY"]
-DOUBAO_ENDPOINT_ID = os.environ["EP-ID"]
+DOUBAO_API_KEY = os.environ.get("DOUBAO-API-KEY") or os.environ["DOUBAO_API_KEY"]
+DOUBAO_ENDPOINT_ID = os.environ.get("EP-ID") or os.environ["EP_ID"]
 DOUBAO_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
 # Screenshot settings

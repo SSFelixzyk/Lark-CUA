@@ -1,0 +1,137 @@
+# 飞书桌面端 — 基础 GUI 操作验收集
+# 用于验证 Agent 动作空间：单击、双击、右键、拖拽、滚动、文本输入、快捷键组合
+# 运行前请保持飞书客户端已登录并置于前台；部分用例依赖 <<TEST_GROUP>>（与 run_benchmark --group 一致）
+
+cases:
+
+  - id: GUI_L1_001
+    level: L1
+    title: 单击 — 切换左侧导航
+    task: >
+      当前飞书桌面客户端在前台。
+      使用一次单击：点击左侧竖向导航栏中的「日历」图标。
+      确认主区域切换为日历界面后，再单击「消息」图标返回消息列表。
+      完成后调用 finished，说明已验证单击。
+    preconditions:
+      - 飞书已登录且窗口在前台
+    success_criteria: "日历与消息两个模块各成功进入一次，界面与导航高亮一致"
+    checkpoints:
+      - "单击后「日历」导航呈选中态，主区为日历视图"
+      - "再次单击后「消息」导航呈选中态，主区为会话列表"
+    expected_steps: 4
+    timeout_steps: 12
+    tags: [gui_primitive, click, smoke]
+
+  - id: GUI_L1_002
+    level: L1
+    title: 快捷键组合 — 打开并关闭全局搜索
+    task: >
+      在飞书前台，按下快捷键组合 Ctrl+K 打开全局搜索框。
+      然后按 Esc 关闭搜索框（若 Esc 无效则点击空白处关闭）。
+      完成后调用 finished，说明已验证快捷键。
+    preconditions:
+      - 飞书已登录且窗口在前台
+    success_criteria: "搜索框曾出现并已关闭，回到搜索前界面"
+    checkpoints:
+      - "Ctrl+K 后出现搜索输入区域"
+      - "关闭后搜索层消失"
+    expected_steps: 3
+    timeout_steps: 10
+    tags: [gui_primitive, hotkey, smoke]
+
+  - id: GUI_L1_003
+    level: L1
+    title: 文本输入 — 在全局搜索框输入再清空
+    task: >
+      使用 hotkey(key='ctrl k') 打开飞书全局搜索。
+      在搜索框中输入文本「CUA-Lark-GUI-TEST」且不要按回车打开结果（仅留在输入框内）。
+      用鼠标全选或多次退格删除输入内容，关闭搜索框。
+      完成后调用 finished，说明已验证文本输入。
+    preconditions:
+      - 飞书已登录且窗口在前台
+    success_criteria: "搜索框内曾显示指定文本且可被清空"
+    checkpoints:
+      - "type 动作将目标字符串输入到搜索框"
+      - "输入框最终为空或已关闭搜索"
+    expected_steps: 6
+    timeout_steps: 15
+    tags: [gui_primitive, type, smoke]
+
+  - id: GUI_L1_004
+    level: L1
+    title: 滚动 — 在会话列表区域向下滚动
+    task: >
+      确保飞书处于「消息」模块，主区域显示会话列表。
+      将鼠标移动到会话列表中部（有列表项的区域），
+      使用 scroll 动作向下滚动若干次，使列表内容明显上移，
+      再向上滚动回到接近原位置。
+      完成后调用 finished，说明已验证滚动。
+    preconditions:
+      - 飞书已登录
+      - 会话列表中会话数量足够产生可滚动区域（或窗口高度较小）
+    success_criteria: "列表区域发生过向下与向上的滚动，可见内容位置变化"
+    checkpoints:
+      - "使用 scroll(direction='down') 至少一次"
+      - "使用 scroll(direction='up') 至少一次"
+    expected_steps: 5
+    timeout_steps: 12
+    tags: [gui_primitive, scroll, smoke]
+
+  - id: GUI_L1_005
+    level: L1
+    title: 右键 — 会话列表打开上下文菜单
+    task: >
+      在飞书「消息」模块的会话列表中，
+      对任意一条会话（优先群聊「<<TEST_GROUP>>」所在行）使用右键单击，
+      确认出现右键菜单后，点击菜单外空白处关闭菜单。
+      完成后调用 finished，说明已验证右键。
+    preconditions:
+      - 飞书已登录
+      - 会话列表中至少有一条会话；群名与 --group 占位符一致时优先该群
+    success_criteria: "右键菜单曾出现并已关闭"
+    checkpoints:
+      - "使用 right_single 或等价右键操作"
+      - "屏幕出现含「置顶」「标为未读」等类似项的上下文菜单"
+    expected_steps: 4
+    timeout_steps: 12
+    tags: [gui_primitive, right_click, smoke]
+
+  - id: GUI_L1_006
+    level: L1
+    title: 双击 — 打开会话
+    task: >
+      在飞书「消息」模块会话列表中，
+      找到群聊「<<TEST_GROUP>>」对应的会话行，
+      对该行标题区域使用左键双击（left_double）打开会话窗口。
+      若已在会话内则先返回列表再双击。
+      完成后调用 finished，说明已验证双击。
+    preconditions:
+      - 飞书已登录
+      - 存在名为「<<TEST_GROUP>>」的群会话
+    success_criteria: "进入该群聊聊天界面，顶部标题为群名"
+    checkpoints:
+      - "使用 left_double 打开会话"
+      - "主区域显示该群聊消息记录与输入框"
+    expected_steps: 5
+    timeout_steps: 14
+    tags: [gui_primitive, double_click, smoke]
+
+  - id: GUI_L1_007
+    level: L1
+    title: 拖拽 — 调整主窗口分隔区域
+    task: >
+      在飞书「消息」模块且已打开任意单聊或群聊，使左侧会话列表与右侧聊天内容同时可见。
+      找到会话列表与右侧聊天内容区之间的竖向分隔条，
+      使用 drag：从分隔条上一点按住拖到水平方向偏移约 80～150 像素的相对位移（用相对坐标估算：起点与终点 x 相差约 50～150 的 0~1000 比例），
+      再拖回原位置附近。
+      完成后调用 finished，说明已验证拖拽。
+    preconditions:
+      - 飞书已登录
+      - 已打开聊天，可见左右分栏分隔条
+    success_criteria: "左右分栏宽度发生过可见变化"
+    checkpoints:
+      - "使用 drag(start_box='(x1,y1)', end_box='(x2,y2)') 且 x1 与 x2 明显不同"
+      - "分隔条移动后聊天区或列表区宽度改变"
+    expected_steps: 5
+    timeout_steps: 14
+    tags: [gui_primitive, drag, smoke]

@@ -139,6 +139,46 @@ cases:
     timeout_steps: 15
     tags: [im, media, attachment]
 
+  - id: IM_L2_006
+    level: L2
+    title: 在会话内搜索消息记录
+    task: >
+      进入飞书群聊「<<TEST_GROUP>>」，
+      点击聊天窗口右上角「搜索」或「聊天记录」入口（若显示为放大镜图标则点击），
+      在搜索框输入关键词「自动化」，
+      在搜索结果中打开任意一条匹配记录，确认可定位到聊天上下文。
+    preconditions:
+      - 飞书已登录
+      - 群聊「<<TEST_GROUP>>」中存在包含「自动化」的历史消息（若无则先发一条含该关键词的测试消息）
+    success_criteria: "搜索界面显示匹配结果，并可跳转到对应聊天位置"
+    checkpoints:
+      - "出现会话内搜索或聊天记录面板"
+      - "搜索结果列表中出现含「自动化」的条目"
+      - "点击结果后聊天区域滚动到对应消息附近"
+    expected_steps: 7
+    timeout_steps: 16
+    tags: [im, search_history, core]
+
+  - id: IM_L2_007
+    level: L2
+    title: 对消息添加表情回复
+    task: >
+      进入飞书群聊「<<TEST_GROUP>>」，
+      将鼠标悬停在任意一条他人发送的消息气泡上，
+      点击出现的「表情」或快捷表情栏中的任意一个表情（如点赞），
+      确认该消息下方出现表情回应。
+    preconditions:
+      - 飞书已登录
+      - 群聊「<<TEST_GROUP>>」中至少有一条非本人发送的消息（若无则请另一账号先发一条）
+    success_criteria: "目标消息旁或下方显示已添加的表情回应"
+    checkpoints:
+      - "悬停消息后显示表情/更多操作入口"
+      - "点击表情后界面有反馈（表情计数或高亮）"
+      - "消息气泡附近可见所选表情图标"
+    expected_steps: 5
+    timeout_steps: 14
+    tags: [im, reaction, emoji]
+
   # ── L3 跨产品联动 ─────────────────────────────────────────────────────────
 
   - id: IM_L3_001

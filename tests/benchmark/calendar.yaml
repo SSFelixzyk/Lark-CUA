@@ -104,3 +104,44 @@ cases:
     expected_steps: 6
     timeout_steps: 15
     tags: [calendar, delete]
+
+  - id: CAL_L2_005
+    level: L2
+    title: 修改已有日程的时间
+    task: >
+      在飞书日历中找到标题含「CUA-Lark」的日程，
+      点击打开该日程详情，
+      将开始与结束时间修改为「今天下午 4:00 至下午 5:00」（若与当前时间冲突则改为明天同一时段），
+      保存修改。
+    preconditions:
+      - 飞书已登录
+      - 存在至少一个标题含「CUA-Lark」的日程
+    success_criteria: "日程块在日历网格上移动至新的时间段，详情中显示更新后的时间"
+    checkpoints:
+      - "日程编辑或详情表单已打开"
+      - "时间选择器或时间字段显示新的起止时间"
+      - "保存后日历主视图该日程所在日期格子与时间一致"
+    expected_steps: 8
+    timeout_steps: 20
+    tags: [calendar, edit, reschedule, core]
+
+  - id: CAL_L2_006
+    level: L2
+    title: 查看联系人忙闲状态
+    task: >
+      进入飞书日历，点击「新建日程」或打开任意日程编辑界面，
+      在「参与人」或「添加参与人」输入框中搜索「<<TEST_CONTACT>>」，
+      添加该联系人后，查看其忙闲展示（日程条旁的忙闲色块、右侧忙闲面板或「查看忙闲」入口），
+      确认能看到至少一天的忙闲示意（忙/闲区分）。
+    preconditions:
+      - 飞书已登录
+      - 联系人「<<TEST_CONTACT>>」已在好友列表中
+      - 有日历写权限
+    success_criteria: "界面展示该联系人在所选日期附近的忙闲信息（色块、时间条或提示文案）"
+    checkpoints:
+      - "参与人列表或输入框中已添加「<<TEST_CONTACT>>」"
+      - "出现忙闲图例、色块条或「忙闲」相关标签区域"
+      - "忙与闲在视觉上可区分（颜色或文字说明）"
+    expected_steps: 9
+    timeout_steps: 22
+    tags: [calendar, free_busy, availability, core]

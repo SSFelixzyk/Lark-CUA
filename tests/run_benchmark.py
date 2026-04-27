@@ -9,6 +9,10 @@ Usage:
     python tests/run_benchmark.py --product im
     python tests/run_benchmark.py --product docs
     python tests/run_benchmark.py --product calendar
+    python tests/run_benchmark.py --product base
+    python tests/run_benchmark.py --product vc
+    python tests/run_benchmark.py --product mail
+    python tests/run_benchmark.py --product gui
 
     # Run specific level
     python tests/run_benchmark.py --level L1
@@ -21,8 +25,9 @@ Usage:
     # Dry run (no actual mouse/keyboard actions)
     python tests/run_benchmark.py --dry-run --product im --level L1
 
-    # Customize test contact
+    # Customize test contact / group / meeting id
     python tests/run_benchmark.py --contact "张三" --group "CUA-Lark课题-6"
+    python tests/run_benchmark.py --product vc --meeting-id "123456789"
 
 Results are saved to: tests/results/benchmark_<timestamp>.json
 """
@@ -52,6 +57,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 # Default placeholders — override with CLI args
 DEFAULT_CONTACT = "<<TEST_CONTACT>>"
 DEFAULT_GROUP = "CUA-Lark课题-6"
+DEFAULT_MEETING_ID = "<<MEETING_ID>>"
 
 
 # ── Loading ───────────────────────────────────────────────────────────────────
@@ -61,6 +67,10 @@ def load_cases(product_filter=None, level_filter=None, tag_filter=None):
         "im": BENCHMARK_DIR / "im.yaml",
         "docs": BENCHMARK_DIR / "docs.yaml",
         "calendar": BENCHMARK_DIR / "calendar.yaml",
+        "base": BENCHMARK_DIR / "base.yaml",
+        "vc": BENCHMARK_DIR / "vc.yaml",
+        "mail": BENCHMARK_DIR / "mail.yaml",
+        "gui": BENCHMARK_DIR / "gui_primitives.yaml",
     }
 
     cases = []
@@ -80,17 +90,22 @@ def load_cases(product_filter=None, level_filter=None, tag_filter=None):
     return cases
 
 
-def fill_placeholders(text: str, contact: str, group: str) -> str:
+def fill_placeholders(
+    text: str, contact: str, group: str, meeting_id: str = DEFAULT_MEETING_ID
+) -> str:
     text = text.replace("<<TEST_CONTACT>>", contact)
     text = text.replace("<<TEST_GROUP>>", group)
+    text = text.replace("<<MEETING_ID>>", meeting_id)
     text = text.replace("<<DATE>>", datetime.now().strftime("%Y%m%d"))
     return text
 
 
 # ── Running ───────────────────────────────────────────────────────────────────
 
-def run_case(case: dict, contact: str, group: str, dry_run: bool) -> dict:
-    task = fill_placeholders(case["task"].strip(), contact, group)
+def run_case(
+    case: dict, contact: str, group: str, meeting_id: str, dry_run: bool
+) -> dict:
+    task = fill_placeholders(case["task"].strip(), contact, group, meeting_id)
 
     if dry_run:
         print(f"  [DRY-RUN] Task: {task[:80]}...")
@@ -213,13 +228,21 @@ def save_results(results: list[dict]) -> Path:
 
 def main():
     parser = argparse.ArgumentParser(description="Lark-CUA Benchmark Runner")
-    parser.add_argument("--product", choices=["im", "docs", "calendar"])
+    parser.add_argument(
+        "--product",
+        choices=["im", "docs", "calendar", "base", "vc", "mail", "gui"],
+    )
     parser.add_argument("--level", choices=["L1", "L2", "L3"])
     parser.add_argument("--tag")
     parser.add_argument("--contact", default=DEFAULT_CONTACT,
                         help="Replace <<TEST_CONTACT>> placeholder")
     parser.add_argument("--group", default=DEFAULT_GROUP,
                         help="Replace <<TEST_GROUP>> placeholder")
+    parser.add_argument(
+        "--meeting-id",
+        default=DEFAULT_MEETING_ID,
+        help="Replace <<MEETING_ID>> placeholder (video conference join case)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--delay", type=int, default=5,
                         help="Seconds to wait before starting (default 5)")
@@ -238,13 +261,15 @@ def main():
     if not args.dry_run:
         if args.contact == DEFAULT_CONTACT:
             print("WARNING: --contact not set, <<TEST_CONTACT>> will be literal in tasks.")
+        if args.meeting_id == DEFAULT_MEETING_ID:
+            print("WARNING: --meeting-id not set, <<MEETING_ID>> will be literal in tasks.")
         print(f"Starting in {args.delay}s — switch to Feishu window now...")
         time.sleep(args.delay)
 
     results = []
     for i, case in enumerate(cases, 1):
         print(f"\n[{i}/{len(cases)}] {case['id']} — {case['title']}")
-        r = run_case(case, args.contact, args.group, args.dry_run)
+        r = run_case(case, args.contact, args.group, args.meeting_id, args.dry_run)
         results.append(r)
         status_str = r["status"].upper()
         print(f"  => {status_str}  steps={r['total_steps']}  time={r['elapsed_ms']/1000:.1f}s")

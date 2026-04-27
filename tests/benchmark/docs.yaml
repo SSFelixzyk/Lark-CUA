@@ -135,6 +135,28 @@ cases:
     timeout_steps: 15
     tags: [docs, permission, share]
 
+  - id: DOC_L2_006
+    level: L2
+    title: 插入标题与无序列表
+    task: >
+      打开飞书云文档「CUA-Lark 自动化测试文档」（若不存在则先新建），
+      在正文第一行输入「/」或通过工具栏「正文」样式菜单，将本行设置为「一级标题」，
+      标题文字为「CUA-Lark 场景测试」，
+      换行后再次使用「/」或工具栏插入「无序列表」，
+      在列表中输入两行：「列表项甲」「列表项乙」，
+      等待自动保存。
+    preconditions:
+      - 飞书已登录
+      - 有云文档写权限
+    success_criteria: "文档中可见一级标题样式及带项目符号的两行列表"
+    checkpoints:
+      - "第一行显示为标题样式（字号或样式与正文不同）"
+      - "标题文字为「CUA-Lark 场景测试」"
+      - "下方出现至少两个带项目符号的列表项"
+    expected_steps: 8
+    timeout_steps: 18
+    tags: [docs, heading, list, formatting, core]
+
   # ── L3 跨产品联动 ─────────────────────────────────────────────────────────
 
   - id: DOC_L3_001
