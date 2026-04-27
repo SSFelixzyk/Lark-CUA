@@ -68,6 +68,7 @@ def execute(raw_response: str) -> dict:
     except Exception as e:
         result["status"] = "error"
         result["error"] = f"parse failed: {e}"
+        # print(result["error"])
         return result
 
     if not actions:

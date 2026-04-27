@@ -1,4 +1,5 @@
 import base64
+import time
 from pathlib import Path
 from openai import OpenAI
 import config
@@ -20,16 +21,25 @@ def encode_image(image_path: str | Path) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
-def chat(messages: list[dict], max_tokens: int = 500) -> str:
+def chat(messages: list[dict], max_tokens: int = 500, retries: int = 3) -> str:
     """Send messages to Doubao and return the raw text response."""
-    response = get_client().chat.completions.create(
-        model=config.DOUBAO_ENDPOINT_ID,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=0.0,
-        frequency_penalty=1,  # reduces repetition, same as UI-TARS deploy example
-    )
-    return response.choices[0].message.content
+    finish = None
+    for attempt in range(retries):
+        response = get_client().chat.completions.create(
+            model=config.DOUBAO_ENDPOINT_ID,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.0,
+            frequency_penalty=1,  # reduces repetition, same as UI-TARS deploy example
+        )
+        content = response.choices[0].message.content
+        if content:
+            return content
+        finish = response.choices[0].finish_reason
+        if attempt < retries - 1:
+            print(f"  [warn] empty response (finish_reason={finish!r}), retry {attempt + 1}/{retries - 1}...")
+            time.sleep(1)
+    raise RuntimeError(f"Empty model response after {retries} retries (finish_reason={finish!r})")
 
 
 def build_user_message(text: str, image_path: str | Path | None = None) -> dict:

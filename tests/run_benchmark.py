@@ -21,6 +21,11 @@ Usage:
     # Run by tag
     python tests/run_benchmark.py --tag smoke
     python tests/run_benchmark.py --tag core
+    
+    # Run specific case id(s)
+    python tests/run_benchmark.py --case-id IM_L2_001
+    python tests/run_benchmark.py --case-id IM_L2_001,DOC_L2_003
+    python tests/run_benchmark.py --case-id IM_L2_001 --case-id DOC_L2_003
 
     # Dry run (no actual mouse/keyboard actions)
     python tests/run_benchmark.py --dry-run --product im --level L1
@@ -62,7 +67,7 @@ DEFAULT_MEETING_ID = "<<MEETING_ID>>"
 
 # ── Loading ───────────────────────────────────────────────────────────────────
 
-def load_cases(product_filter=None, level_filter=None, tag_filter=None):
+def load_cases(product_filter=None, level_filter=None, tag_filter=None, case_ids_filter=None):
     files = {
         "im": BENCHMARK_DIR / "im.yaml",
         "docs": BENCHMARK_DIR / "docs.yaml",
@@ -85,9 +90,24 @@ def load_cases(product_filter=None, level_filter=None, tag_filter=None):
                 continue
             if tag_filter and tag_filter not in case.get("tags", []):
                 continue
+            if case_ids_filter and case.get("id") not in case_ids_filter:
+                continue
             cases.append(case)
 
     return cases
+
+
+def parse_case_ids(case_id_args: list[str] | None) -> set[str]:
+    if not case_id_args:
+        return set()
+
+    case_ids = set()
+    for raw in case_id_args:
+        for item in raw.split(","):
+            cid = item.strip()
+            if cid:
+                case_ids.add(cid)
+    return case_ids
 
 
 def fill_placeholders(
@@ -234,6 +254,11 @@ def main():
     )
     parser.add_argument("--level", choices=["L1", "L2", "L3"])
     parser.add_argument("--tag")
+    parser.add_argument(
+        "--case-id",
+        action="append",
+        help="Run only specific case id(s). Supports comma-separated values and repeated flags.",
+    )
     parser.add_argument("--contact", default=DEFAULT_CONTACT,
                         help="Replace <<TEST_CONTACT>> placeholder")
     parser.add_argument("--group", default=DEFAULT_GROUP,
@@ -248,7 +273,8 @@ def main():
                         help="Seconds to wait before starting (default 5)")
     args = parser.parse_args()
 
-    cases = load_cases(args.product, args.level, args.tag)
+    case_ids_filter = parse_case_ids(args.case_id)
+    cases = load_cases(args.product, args.level, args.tag, case_ids_filter)
     if not cases:
         print("No cases matched the filters.")
         sys.exit(0)
@@ -273,6 +299,10 @@ def main():
         results.append(r)
         status_str = r["status"].upper()
         print(f"  => {status_str}  steps={r['total_steps']}  time={r['elapsed_ms']/1000:.1f}s")
+        if r["status"] == "error" and r["steps"]:
+            last_err = r["steps"][-1].get("error")
+            if last_err:
+                print(f"     reason: {last_err}")
 
         # Pause between cases so the screen can settle
         if i < len(cases) and not args.dry_run:

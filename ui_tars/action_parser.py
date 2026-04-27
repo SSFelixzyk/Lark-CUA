@@ -26,6 +26,23 @@ def _normalize_box_coordinate_string(value: str) -> str:
     return value
 
 
+_BOX_NUMBER_TOKEN = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _numbers_from_box_string(box_param: str) -> list[float]:
+    """
+    Extract ordered numbers from (661,346), (661 346), (661，346), or four-tuple box strings.
+    Avoids split(',') producing a single token like '661 346' which cannot float().
+    """
+    s = _normalize_box_coordinate_string((box_param or "").strip())
+    inner = s.strip()
+    if inner.startswith("(") and inner.endswith(")"):
+        inner = inner[1:-1].strip()
+    if not inner:
+        return []
+    return [float(t) for t in _BOX_NUMBER_TOKEN.findall(inner)]
+
+
 def convert_point_to_coordinates(text, is_answer=False):
     # 匹配 <bbox> 后面的四个数字
     pattern = r"<point>(\d+)\s+(\d+)</point>"
@@ -204,27 +221,23 @@ def parse_action_to_structure_output(text,
         elif len(thought_match.groups()) == 2:
             thought = thought_match.group(2).strip()
             reflection = thought_match.group(1).strip()
-    assert "Action:" in text
+    # Normalize full-width colon (U+FF1A) that Chinese LLMs sometimes emit
+    text = re.sub(r"Action：", "Action:", text)
+    if "Action:" not in text:
+        raise ValueError(f"No 'Action:' found in model response: {text[:120]!r}")
     action_str = text.split("Action: ")[-1]
 
     tmp_all_action = action_str.split(")\n\n")
     all_action = []
     for action_str in tmp_all_action:
         if "type(content" in action_str:
-            if not action_str.strip().endswith(")"):
-                action_str = action_str.strip() + ")"
-            def escape_quotes(match):
-                content = match.group(1)
-                return content
-
             pattern = r"type\(content='(.*?)'\)"
-            if re.search(pattern, action_str):
-                content = re.sub(pattern, escape_quotes, action_str)
+            m = re.search(pattern, action_str)
+            if m:
+                content = m.group(1)
             else:
                 raise ValueError("Pattern not found in the input string.")
-
-            action_str = escape_single_quotes(content)
-            action_str = "type(content='" + action_str + "')"
+            action_str = "type(content='" + escape_single_quotes(content) + "')"
         if not action_str.strip().endswith(")"):
             action_str = action_str.strip() + ")"
         all_action.append(action_str)
@@ -248,13 +261,19 @@ def parse_action_to_structure_output(text,
             action_inputs[param_name.strip()] = param
 
             if "start_box" in param_name or "end_box" in param_name:
-                ori_box = _normalize_box_coordinate_string(param)
-                numbers = ori_box.replace("(", "").replace(")", "").split(",")
+                float_nums = _numbers_from_box_string(param)
+                if len(float_nums) >= 4:
+                    float_nums = float_nums[:4]
+                elif len(float_nums) == 2:
+                    pass
+                else:
+                    raise ValueError(
+                        f"Expected 2 or 4 numbers in {param_name}, got {len(float_nums)}: {param!r}"
+                    )
 
                 if model_type == "qwen25vl":
                     float_numbers = []
-                    for num_idx, num in enumerate(numbers):
-                        num = float(num.strip())
+                    for num_idx, num in enumerate(float_nums):
                         if (num_idx + 1) % 2 == 0:
                             float_numbers.append(
                                 float(num / smart_resize_height))
@@ -262,7 +281,7 @@ def parse_action_to_structure_output(text,
                             float_numbers.append(
                                 float(num / smart_resize_width))
                 else:
-                    float_numbers = [float(num.strip()) / factor for num in numbers]
+                    float_numbers = [num / factor for num in float_nums]
 
                 if len(float_numbers) == 2:
                     float_numbers = [
