@@ -83,6 +83,98 @@ python tests/test_loop.py "在飞书 IM 中搜索群聊 XXX 并发送消息 Hell
 
 ---
 
+## VM 模式（OSWorld 风格隔离评测）
+
+### 概述
+
+默认模式下 Agent 直接在本机运行，截图和操作都在本机执行。VM 模式将执行环境迁移到 VMware 虚拟机中，Agent 逻辑仍在宿主机运行，所有 GUI 操作通过 HTTP 发送到 VM 内的 Action Server 执行，每次测试前可还原快照保证环境干净。
+
+```
+宿主机（Agent + LLM 调用）
+    ↕ HTTP
+VM（飞书 + Action Server）
+```
+
+### 手动配置 VM（推荐）
+
+> ⚠️ `vm/provision.py` 目前不够稳定，建议按以下步骤手动完成 VM 配置。
+
+**第一步：准备 VM**
+
+1. 安装 VMware Workstation Pro（个人免费）
+2. 新建 Windows 11 虚拟机，分配 6GB 内存、4 核 CPU
+3. 安装 VMware Tools（VM → Install VMware Tools）
+4. 在 VM 内安装 Python 3.11+（勾选 "Add Python to PATH"）
+5. 在 VM 内安装飞书并登录账号
+
+**第二步：在 VM 内部署 Action Server**
+
+将 `vm/action_server.py` 复制到 VM 内（如 `C:\LarkCUA\`），安装依赖：
+
+```bash
+pip install flask pyautogui mss pillow pyperclip
+```
+
+注册为开机自启任务（在 VM 内 PowerShell 中运行）：
+
+```powershell
+$a = New-ScheduledTaskAction -Execute 'python.exe' -Argument 'C:\LarkCUA\action_server.py'
+$t = New-ScheduledTaskTrigger -AtLogOn
+Register-ScheduledTask -TaskName 'LarkCUAActionServer' -Action $a -Trigger $t -RunLevel Highest -Force
+```
+
+**第三步：打 base 快照**
+
+飞书处于正常登录状态时，在 VMware 菜单中：
+
+```
+VM → Snapshot → Take Snapshot → 名字填 base → OK
+```
+
+**第四步：配置宿主机 .env**
+
+```
+VM_MODE=true
+VM_SERVER_URL=http://<VM的IP>:8765
+```
+
+VM 的 IP 可在 VM 内运行 `ipconfig` 查看，或在 VMware 菜单中查看。
+
+**第五步：验证连接**
+
+```powershell
+curl http://<VM的IP>:8765/health
+# 返回 {"status":"ok"} 即成功
+```
+
+### 运行 VM 模式 Benchmark
+
+```bash
+# 每次 run 开始时还原一次快照（推荐）
+python tests/vm_runner.py \
+  --vmx "C:\path\to\vm.vmx" \
+  --snapshot base \
+  --product gui \
+  --reset never
+
+# 每个 case 前都还原快照（最严格隔离）
+python tests/vm_runner.py \
+  --vmx "C:\path\to\vm.vmx" \
+  --snapshot base \
+  --product gui \
+  --reset each
+```
+
+### 切换回本地模式
+
+将 `.env` 中 `VM_MODE` 改为 `false`，直接运行：
+
+```bash
+python tests/run_benchmark.py --product gui --level L1
+```
+
+---
+
 ## 架构概览
 
 ```

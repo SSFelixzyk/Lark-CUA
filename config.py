@@ -16,3 +16,8 @@ SCREENSHOT_DIR.mkdir(exist_ok=True)
 MAX_STEPS = 30
 STEP_WAIT_MS = 1500   # ms to wait after executing an action before next screenshot
 HISTORY_TURNS = 6     # number of past (user+assistant) turns to keep in context
+
+# VM settings (OSWorld-style remote execution)
+# Set VM_MODE=true in .env to enable; set VM_SERVER_URL to the VM's action server address.
+VM_MODE = os.environ.get("VM_MODE", "false").lower() == "true"
+VM_SERVER_URL = os.environ.get("VM_SERVER_URL", "http://192.168.1.100:8765")

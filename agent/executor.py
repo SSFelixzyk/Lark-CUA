@@ -17,7 +17,11 @@ WAIT_SECONDS = 3
 
 
 def logical_size() -> tuple[int, int]:
-    """Screen size in logical pixels — what pyautogui uses for coordinates."""
+    """Screen size — VM resolution in VM mode, host resolution otherwise."""
+    import config
+    if config.VM_MODE:
+        from agent.screenshot import screen_size
+        return screen_size()
     s = pyautogui.size()
     return s.width, s.height
 
@@ -92,7 +96,12 @@ def execute(raw_response: str) -> dict:
         return result
 
     try:
-        exec(code, {})  # noqa: S102
+        import config
+        if config.VM_MODE:
+            from vm.vm_client import get_vm_client
+            get_vm_client().execute(code)
+        else:
+            exec(code, {})  # noqa: S102
     except Exception as e:
         result["status"] = "error"
         result["error"] = f"exec failed: {e}\ncode:\n{code}"
