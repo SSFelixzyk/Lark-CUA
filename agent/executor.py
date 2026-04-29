@@ -16,14 +16,21 @@ pyautogui.FAILSAFE = True
 WAIT_SECONDS = 3
 
 
+_screen_size_cache: tuple[int, int] | None = None
+
 def logical_size() -> tuple[int, int]:
-    """Screen size — VM resolution in VM mode, host resolution otherwise."""
+    """Screen size — VM resolution in VM mode, host resolution otherwise. Cached after first call."""
+    global _screen_size_cache
+    if _screen_size_cache is not None:
+        return _screen_size_cache
     import config
     if config.VM_MODE:
         from agent.screenshot import screen_size
-        return screen_size()
-    s = pyautogui.size()
-    return s.width, s.height
+        _screen_size_cache = screen_size()
+    else:
+        s = pyautogui.size()
+        _screen_size_cache = (s.width, s.height)
+    return _screen_size_cache
 
 
 def execute(raw_response: str) -> dict:

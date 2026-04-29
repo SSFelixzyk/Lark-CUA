@@ -102,6 +102,16 @@ def main():
             print("VM ready.")
 
         print(f"\n[{i}/{len(cases)}] {case['id']} — {case['title']}")
+        try:
+            client.wait_ready(retries=5, interval=2.0)
+        except RuntimeError:
+            print("  => SKIP  Action server unreachable (VM may be suspended)")
+            results.append({
+                "id": case["id"], "product": case["product"], "level": case["level"],
+                "title": case["title"], "status": "skipped", "total_steps": 0,
+                "elapsed_ms": 0, "steps": [],
+            })
+            continue
         r = run_case(case, args.contact, args.group, args.meeting_id, dry_run=False)
         results.append(r)
 
