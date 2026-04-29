@@ -127,6 +127,9 @@ def run_case(
     run_screenshot_dir=None,
 ) -> dict:
     task = fill_placeholders(case["task"].strip(), contact, group, meeting_id)
+    if case.get("ui_hints"):
+        hints = fill_placeholders(case["ui_hints"].strip(), contact, group, meeting_id)
+        task = task + f"\n\n【界面提示】{hints}"
 
     if dry_run:
         print(f"  [DRY-RUN] Task: {task[:80]}...")
