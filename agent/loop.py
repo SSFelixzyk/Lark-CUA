@@ -66,11 +66,19 @@ class RunResult:
         return "\n".join(lines)
 
 
+def _sanitize_dirname(name: str) -> str:
+    """Strip characters invalid in Windows directory names."""
+    invalid = r'\/:*?"<>|'
+    return "".join(c if c not in invalid else "_" for c in name)[:40]
+
+
 class LarkAgent:
-    def __init__(self, max_steps: int = config.MAX_STEPS):
+    def __init__(self, max_steps: int = config.MAX_STEPS, screenshot_dir: Path | str | None = None):
         self.max_steps = max_steps
+        self.screenshot_dir = Path(screenshot_dir) if screenshot_dir else config.SCREENSHOT_DIR
 
     def run(self, task: str) -> RunResult:
+        self.screenshot_dir.mkdir(parents=True, exist_ok=True)
         result = RunResult(task=task, status="timeout")
         history: list[dict] = []   # alternating user / assistant messages
         system_prompt = LARK_SYSTEM_PROMPT.format(task=task)
@@ -78,8 +86,8 @@ class LarkAgent:
         for step_num in range(1, self.max_steps + 1):
             t0 = time.time()
 
-            # 1. Screenshot
-            shot_path = capture()
+            # 1. Screenshot — saved as pending, renamed after action_type is known
+            shot_path = capture(self.screenshot_dir / f"step{step_num:02d}_pending.png")
 
             # 2. Build messages
             user_msg = build_user_message("请观察当前屏幕，执行下一步操作。", shot_path)
@@ -104,12 +112,21 @@ class LarkAgent:
             print(raw)
             exec_result = execute(raw)
 
+            # Rename screenshot now that we know the action type
+            action_type = exec_result["action_type"] or "unknown"
+            final_shot = self.screenshot_dir / f"step{step_num:02d}_{action_type}.png"
+            try:
+                shot_path.rename(final_shot)
+                shot_path = final_shot
+            except OSError:
+                pass  # keep pending name if rename fails
+
             elapsed = int((time.time() - t0) * 1000)
             rec = StepRecord(
                 step=step_num,
                 screenshot=str(shot_path),
                 thought=exec_result["thought"],
-                action_type=exec_result["action_type"] or "",
+                action_type=action_type,
                 raw_response=raw,
                 pyautogui_code=exec_result["code"],
                 status=exec_result["status"],

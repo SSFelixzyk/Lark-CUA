@@ -123,7 +123,8 @@ def fill_placeholders(
 # ── Running ───────────────────────────────────────────────────────────────────
 
 def run_case(
-    case: dict, contact: str, group: str, meeting_id: str, dry_run: bool
+    case: dict, contact: str, group: str, meeting_id: str, dry_run: bool,
+    run_screenshot_dir=None,
 ) -> dict:
     task = fill_placeholders(case["task"].strip(), contact, group, meeting_id)
 
@@ -140,7 +141,12 @@ def run_case(
             "steps": [],
         }
 
-    agent = LarkAgent(max_steps=case.get("timeout_steps", 20))
+    screenshot_dir = None
+    if run_screenshot_dir is not None:
+        safe_title = re.sub(r'[\\/:*?"<>|]', "_", case["title"])[:30]
+        screenshot_dir = run_screenshot_dir / f"{case['id']}_{safe_title}"
+
+    agent = LarkAgent(max_steps=case.get("timeout_steps", 20), screenshot_dir=screenshot_dir)
     result: RunResult = agent.run(task)
 
     return {
@@ -223,8 +229,9 @@ def print_summary(results: list[dict]):
     print("=" * 65)
 
 
-def save_results(results: list[dict]) -> Path:
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+def save_results(results: list[dict], ts: str | None = None) -> Path:
+    if ts is None:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = RESULTS_DIR / f"benchmark_{ts}.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump(
@@ -284,6 +291,8 @@ def main():
         print(f"  {c['id']:<18} [{c['level']}] {c['title']}")
     print()
 
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     if not args.dry_run:
         if args.contact == DEFAULT_CONTACT:
             print("WARNING: --contact not set, <<TEST_CONTACT>> will be literal in tasks.")
@@ -292,10 +301,14 @@ def main():
         print(f"Starting in {args.delay}s — switch to Feishu window now...")
         time.sleep(args.delay)
 
+    import config as _cfg
+    run_screenshot_dir = _cfg.SCREENSHOT_DIR / f"run_{ts}" if not args.dry_run else None
+    print(f"Screenshots: {run_screenshot_dir or '(dry-run, skipped)'}\n")
+
     results = []
     for i, case in enumerate(cases, 1):
         print(f"\n[{i}/{len(cases)}] {case['id']} — {case['title']}")
-        r = run_case(case, args.contact, args.group, args.meeting_id, args.dry_run)
+        r = run_case(case, args.contact, args.group, args.meeting_id, args.dry_run, run_screenshot_dir)
         results.append(r)
         status_str = r["status"].upper()
         print(f"  => {status_str}  steps={r['total_steps']}  time={r['elapsed_ms']/1000:.1f}s")
@@ -309,8 +322,10 @@ def main():
             time.sleep(3)
 
     print_summary(results)
-    out = save_results(results)
+    out = save_results(results, ts)
     print(f"\nResults saved to: {out}")
+    if run_screenshot_dir:
+        print(f"Screenshots in : {run_screenshot_dir}")
 
 
 if __name__ == "__main__":
