@@ -287,19 +287,23 @@ def verify(
     screenshot_path: Path | None = None,
     screenshot_dir: Path | None = None,
     run_start: datetime | None = None,
+    checkpoint_shots: dict[int, str] | None = None,
 ) -> VerificationResult:
     """
     Run all verifications for a completed case.
 
     Args:
-        case:            The benchmark YAML case dict (must have 'id', 'checkpoints', etc.)
-        screenshot_path: Path to the final step screenshot (fallback for VLM checks)
-        screenshot_dir:  Directory containing all per-step screenshots; when provided,
-                         each checkpoint is matched to its corresponding step screenshot
-                         rather than all using the final screenshot.
-        run_start:       Datetime when the case started; CLI checks filter results to
-                         only objects created after this time, preventing false positives
-                         from previous runs with identical content.
+        case:             The benchmark YAML case dict (must have 'id', 'checkpoints', etc.)
+        screenshot_path:  Path to the final step screenshot (fallback for VLM checks)
+        screenshot_dir:   Directory with all per-step screenshots (fallback if no
+                          checkpoint_shots mapping)
+        run_start:        Datetime when the case started; CLI checks filter results to
+                          only objects created after this time, preventing false positives
+                          from previous runs with identical content.
+        checkpoint_shots: Mapping from checkpoint index → screenshot path, recorded by
+                          the agent exactly when it declared each checkpoint reached.
+                          When present, VLM verification uses these precise screenshots
+                          instead of a linear index approximation.
 
     Returns:
         VerificationResult with per-checkpoint results and overall verdict
@@ -308,7 +312,7 @@ def verify(
     checks: list[CheckResult] = []
     cli_ok = _cli_available()
 
-    # Collect ordered step screenshots (checkpoint[i] → step_shots[i] if available)
+    # Fallback ordered step screenshots (used only when checkpoint_shots is absent)
     step_shots = _collect_step_shots(screenshot_dir)
 
     # 1. Structured CLI verifications (from yaml field)
@@ -327,10 +331,17 @@ def verify(
     if not case.get("cli_verifications") and cli_ok:
         checks.extend(_infer_cli_checks(case))
 
-    # 3. VLM checks for each checkpoint — use matching step screenshot when available
+    # 3. VLM checks for each checkpoint — prefer exact agent-recorded screenshot
     for i, cp in enumerate(case.get("checkpoints", [])):
-        # Prefer the step screenshot at the same index; fall back to final screenshot
-        shot = step_shots[i] if i < len(step_shots) else screenshot_path
+        if checkpoint_shots and i in checkpoint_shots:
+            # Best: the screenshot taken exactly when the agent declared this checkpoint reached
+            shot = Path(checkpoint_shots[i])
+        elif i < len(step_shots):
+            # Fallback: linear index into step screenshots (approximate)
+            shot = step_shots[i]
+        else:
+            # Last resort: final screenshot
+            shot = screenshot_path
         if shot:
             checks.append(_vlm_check(cp, shot))
 
