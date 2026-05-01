@@ -80,6 +80,12 @@ SYSTEM = """\
 - preconditions: 执行前提列表
 - success_criteria: 单句话，描述可从截图直接判断的成功状态
 - checkpoints: 2~5个可从截图观察的中间/最终状态
+- cli_verifications: 结构化验证列表，每项为以下类型之一：
+    {type: im_message,     expected_text: "消息内容"}   # 验证IM消息已发送
+    {type: calendar_event, title: "日程标题"}            # 验证日程已创建
+    {type: drive_doc,      name: "文档名称"}             # 验证云文档已创建
+    {type: im_chat,        name: "群聊名称"}             # 验证群聊已创建
+  若任务不涉及以上可验证资源，则省略此字段
 - expected_steps: 最少步骤数（整数）
 - timeout_steps: 超时步骤数（建议为 expected_steps 的 2 倍）
 - tags: 小写标签列表
@@ -88,6 +94,7 @@ SYSTEM = """\
 ## 输出规则
 - 只输出YAML内容，不加 ```yaml 代码块，不加任何说明文字
 - ui_hints 必须具体到控件所在区域（如"消息面板顶部header右上角"）
+- cli_verifications 中的文字要与 task 中实际输入/创建的内容完全一致
 """
 
 

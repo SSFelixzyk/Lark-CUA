@@ -152,6 +152,33 @@ def run_case(
     agent = LarkAgent(max_steps=case.get("timeout_steps", 20), screenshot_dir=screenshot_dir)
     result: RunResult = agent.run(task)
 
+    # Post-execution verification (CLI + VLM)
+    verification = None
+    if result.status in ("done", "failed"):
+        try:
+            from agent.verifier import verify
+            final_shot = (
+                Path(result.steps[-1].screenshot) if result.steps else None
+            )
+            vr = verify(case, final_shot)
+            verification = {
+                "overall": vr.overall,
+                "checks": [
+                    {
+                        "checkpoint": c.checkpoint,
+                        "method": c.method,
+                        "passed": c.passed,
+                        "reason": c.reason,
+                    }
+                    for c in vr.checks
+                ],
+            }
+            print(f"  [verify] {vr.overall.upper()}  "
+                  + "  ".join(f"{'✓' if c.passed else ('✗' if c.passed is False else '?')}{c.method}"
+                               for c in vr.checks))
+        except Exception as e:
+            print(f"  [verify] skipped ({e})")
+
     return {
         "id": case["id"],
         "product": case["product"],
@@ -162,6 +189,7 @@ def run_case(
         "total_steps": result.total_steps,
         "elapsed_ms": result.elapsed_ms,
         "expected_steps": case.get("expected_steps"),
+        "verification": verification,
         "steps": [
             {
                 "step": s.step,
