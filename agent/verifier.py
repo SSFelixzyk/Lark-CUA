@@ -54,30 +54,37 @@ class VerificationResult:
 
 # ── lark-cli helpers ──────────────────────────────────────────────────────────
 
+import platform
+_SHELL = platform.system() == "Windows"  # shell=True required on Windows for npm-installed CLIs
+
+
 def _cli_available() -> bool:
     try:
-        r = subprocess.run(["lark-cli", "--version"], capture_output=True, timeout=5)
+        r = subprocess.run("lark-cli --version", capture_output=True, timeout=5,
+                           shell=True, text=True)
         return r.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+    except subprocess.TimeoutExpired:
         return False
 
 
 def _run_cli(*args: str, timeout: int = 15) -> tuple[bool, dict | list | None, str]:
     """Run lark-cli and return (success, parsed_json, raw_stdout)."""
-    cmd = ["lark-cli", *args, "--format", "json"]
+    cmd = "lark-cli " + " ".join(args) + " --format json"
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                           encoding="utf-8", errors="replace")
-        raw = r.stdout.strip()
-        if r.returncode != 0:
-            return False, None, r.stderr.strip() or raw
+                           shell=True, encoding="utf-8", errors="replace")
+        # lark-cli writes JSON errors to stdout with non-zero exit code
+        raw = r.stdout.strip() or r.stderr.strip()
         try:
-            return True, json.loads(raw), raw
+            parsed = json.loads(raw)
         except json.JSONDecodeError:
-            return True, None, raw
+            parsed = None
+        if r.returncode != 0:
+            return False, parsed, raw
+        return True, parsed, raw
     except subprocess.TimeoutExpired:
         return False, None, "timeout"
-    except FileNotFoundError:
+    except Exception as e:
         return False, None, "lark-cli not found"
 
 
@@ -86,38 +93,47 @@ def _run_cli(*args: str, timeout: int = 15) -> tuple[bool, dict | list | None, s
 def _cli_im_message(expected_text: str, chat_name: str = "") -> CheckResult:
     """Search for a sent message by keyword."""
     checkpoint = f"消息「{expected_text}」已发送"
-    ok, data, raw = _run_cli("im", "messages.search", "--query", expected_text)
+    ok, data, raw = _run_cli(f'im +messages-search --query "{expected_text}"')
     if not ok:
-        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {raw}", raw)
+        err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
+        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
 
-    items = data if isinstance(data, list) else (data or {}).get("items", []) if data else []
+    items = (data or {}).get("items", []) if isinstance(data, dict) else (data or [])
     if items:
         return CheckResult(checkpoint, "cli", True, f"找到 {len(items)} 条匹配消息", raw[:200])
     return CheckResult(checkpoint, "cli", False, "未找到包含该关键词的消息", raw[:200])
 
 
 def _cli_calendar_event(title: str) -> CheckResult:
-    """Search for a calendar event by title."""
+    """Check calendar agenda for an event with the given title (uses +agenda, no extra scope)."""
     checkpoint = f"日程「{title}」已创建"
-    ok, data, raw = _run_cli("calendar", "events.search_event", "--query", title)
+    # +agenda defaults to today; search within next 7 days
+    ok, data, raw = _run_cli("calendar +agenda --days 7")
     if not ok:
-        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {raw}", raw)
+        err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
+        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
 
-    items = data if isinstance(data, list) else (data or {}).get("items", []) if data else []
-    if items:
-        return CheckResult(checkpoint, "cli", True, f"找到日程: {items[0]}", raw[:200])
-    return CheckResult(checkpoint, "cli", False, "未找到该日程", raw[:200])
+    # data may be a list of event objects or wrapped in a key
+    items = data if isinstance(data, list) else (data or {}).get("items", data or [])
+    matched = [i for i in (items or [])
+               if title in (i.get("summary", "") if isinstance(i, dict) else str(i))]
+    if matched:
+        return CheckResult(checkpoint, "cli", True, f"找到日程: {matched[0]}", raw[:200])
+    # If raw text contains the title it's also a match (pretty format fallback)
+    if title in raw:
+        return CheckResult(checkpoint, "cli", True, "日程标题出现在议程输出中", raw[:200])
+    return CheckResult(checkpoint, "cli", False, "近7天议程中未找到该日程", raw[:200])
 
 
 def _cli_drive_doc(doc_name: str) -> CheckResult:
     """Search for a cloud document by name."""
     checkpoint = f"云文档「{doc_name}」已创建"
-    ok, data, raw = _run_cli("drive", "+search", "--query", doc_name,
-                              "--doc-types", "doc")
+    ok, data, raw = _run_cli(f'drive +search --query "{doc_name}" --doc-types doc,docx --only-title')
     if not ok:
-        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {raw}", raw)
+        err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
+        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
 
-    items = data if isinstance(data, list) else (data or {}).get("items", []) if data else []
+    items = (data or {}).get("items", []) if isinstance(data, dict) else (data or [])
     if items:
         return CheckResult(checkpoint, "cli", True, f"找到文档: {items[0]}", raw[:200])
     return CheckResult(checkpoint, "cli", False, "未找到该文档", raw[:200])
@@ -126,12 +142,14 @@ def _cli_drive_doc(doc_name: str) -> CheckResult:
 def _cli_im_chat(chat_name: str) -> CheckResult:
     """Check if a group chat with the given name exists."""
     checkpoint = f"群聊「{chat_name}」已创建"
-    ok, data, raw = _run_cli("im", "chats.search", "--query", chat_name)
+    ok, data, raw = _run_cli(f'im +chat-search --query "{chat_name}"')
     if not ok:
-        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {raw}", raw)
+        err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
+        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
 
-    items = data if isinstance(data, list) else (data or {}).get("items", []) if data else []
-    matched = [i for i in items if chat_name in (i.get("name", "") if isinstance(i, dict) else str(i))]
+    items = (data or {}).get("items", []) if isinstance(data, dict) else (data or [])
+    matched = [i for i in items
+               if chat_name in (i.get("name", "") if isinstance(i, dict) else str(i))]
     if matched:
         return CheckResult(checkpoint, "cli", True, f"找到群聊: {matched[0]}", raw[:200])
     return CheckResult(checkpoint, "cli", False, "未找到该群聊", raw[:200])
