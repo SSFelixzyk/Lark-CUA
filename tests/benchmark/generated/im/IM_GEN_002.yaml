@@ -1,0 +1,24 @@
+id: IM_GEN_002
+level: L2
+title: 搜索联系人发测试消息
+task: 按Ctrl+K唤出「全局搜索框」，搜索联系人「<<TEST_CONTACT>>」，进入单聊界面后点击「消息输入框」，输入「【自动化验证】Hello World」，按回车发送消息。
+ui_hints: 全局搜索框位于会话列表区顶部，Ctrl+K可直接激活输入；消息输入框位于聊天内容区底部，输入内容后按Enter即可发送。
+preconditions:
+- 飞书桌面客户端已登录并处于前台
+- 联系人<<TEST_CONTACT>>已在好友列表中
+success_criteria: 单聊界面聊天记录最底部出现内容为【自动化验证】Hello World的消息气泡
+checkpoints:
+- 按下Ctrl+K后全局搜索框成功唤起并处于激活状态
+- 搜索结果列表中出现联系人<<TEST_CONTACT>>的条目
+- 成功进入与<<TEST_CONTACT>>的单聊界面，顶部显示对应联系人名称
+- 聊天记录底部出现己方发送的内容为【自动化验证】Hello World的消息气泡
+cli_verifications:
+- type: im_message
+  expected_text: 【自动化验证】Hello World
+expected_steps: 6
+timeout_steps: 12
+tags:
+- im
+- send_message
+- core
+generated: true

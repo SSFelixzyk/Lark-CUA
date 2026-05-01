@@ -106,9 +106,14 @@ def _cli_im_message(expected_text: str, chat_name: str = "") -> CheckResult:
 
 def _cli_calendar_event(title: str) -> CheckResult:
     """Check calendar agenda for an event with the given title (uses +agenda, no extra scope)."""
+    from datetime import datetime, timedelta, timezone
     checkpoint = f"日程「{title}」已创建"
-    # +agenda defaults to today; search within next 7 days
-    ok, data, raw = _run_cli("calendar +agenda --days 7")
+    # Search today + next 7 days in ISO 8601 with local offset
+    tz_offset = datetime.now(timezone.utc).astimezone().strftime("%z")
+    tz_offset = tz_offset[:3] + ":" + tz_offset[3:]  # +0800 → +08:00
+    start = datetime.now().strftime(f"%Y-%m-%dT00:00:00{tz_offset}")
+    end   = (datetime.now() + timedelta(days=7)).strftime(f"%Y-%m-%dT23:59:59{tz_offset}")
+    ok, data, raw = _run_cli(f'calendar +agenda --start "{start}" --end "{end}"')
     if not ok:
         err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
         return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
