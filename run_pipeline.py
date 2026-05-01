@@ -44,31 +44,19 @@ def _abort(msg: str) -> None:
     sys.exit(1)
 
 
-# ── Step 1: DSL generation ────────────────────────────────────────────────────
+# ── Step 1: DSL generation (with built-in evaluate loop) ─────────────────────
 
-def step_dsl_generate(task: str, product: str) -> Path:
-    _section("Step 1 / 4 — DSL 生成")
-    from dsl.generator import generate
-    case, yaml_path = generate(task, product)
-    print(f"[DSL] 生成完成: {yaml_path}")
+def step_dsl_generate(task: str, product: str, max_retries: int = 3, skip_eval: bool = False) -> tuple:
+    _section("Step 1 / 4 — DSL 生成 + 评审")
+    if skip_eval:
+        from dsl.generator import generate
+        case, yaml_path = generate(task, product)
+    else:
+        from dsl.generator import generate_loop
+        case, yaml_path = generate_loop(task, product, max_retries=max_retries)
+    print(f"[DSL] saved: {yaml_path}")
     print(f"[DSL] case_id: {case.get('id')}  level: {case.get('level')}")
     return yaml_path, case.get("id")
-
-
-# ── Step 2: DSL evaluation ────────────────────────────────────────────────────
-
-def step_dsl_evaluate(yaml_path: Path) -> None:
-    _section("Step 2 / 4 — DSL 评分")
-    from dsl.evaluator import evaluate, VERDICT_LABEL, DIM_ORDER
-    result = evaluate(yaml_path)
-    print(f"  Overall : {result['overall']}/2  [{VERDICT_LABEL.get(result['verdict'], result['verdict'])}]")
-    for dim in DIM_ORDER:
-        v   = result["scores"].get(dim, {})
-        bar = f"[{v.get('score', '?')}]"
-        print(f"  {bar}  {dim:<20}  {v.get('reason', '')}")
-    if result["verdict"] == "reject":
-        _abort("DSL 质量不达标（verdict=reject），请修改任务描述后重试。")
-    print()
 
 
 # ── Step 3: Benchmark run ─────────────────────────────────────────────────────
@@ -80,7 +68,7 @@ def step_run_benchmark(
     meeting_id: str,
     delay: int,
 ) -> Path:
-    _section("Step 3 / 4 — GUI 执行")
+    _section("Step 2 / 3 — GUI 执行")
     from tests.run_benchmark import load_cases, run_case, save_results, print_summary
 
     cases = load_cases(case_ids_filter={case_id})
@@ -109,10 +97,10 @@ def step_run_benchmark(
     return result_path
 
 
-# ── Step 4: Report ────────────────────────────────────────────────────────────
+# ── Step 3: Report ────────────────────────────────────────────────────────────
 
 def step_report(result_path: Path, publish: bool, no_insights: bool, folder: str) -> None:
-    _section("Step 4 / 4 — 报告生成")
+    _section("Step 3 / 3 — 报告生成")
     from report import md, feishu_doc, insight_agent
     from tools.report_publisher import REPORTS_DIR
 
@@ -179,7 +167,9 @@ def main():
     parser.add_argument("--folder",      default="",
                         help="飞书报告文件夹 token（覆盖 .env）")
     parser.add_argument("--skip-eval",   action="store_true",
-                        help="跳过 DSL 质量评分")
+                        help="跳过 DSL 生成评审循环（单次生成直接用）")
+    parser.add_argument("--max-retries", type=int, default=3,
+                        help="DSL 生成评审循环最大重试次数（默认 3）")
     parser.add_argument("--no-insights", action="store_true",
                         help="跳过 AI 分析（报告更快）")
     args = parser.parse_args()
@@ -188,14 +178,14 @@ def main():
     print(f"  任务: {args.task}")
     print(f"  产品: {args.product}  联系人: {args.contact}")
 
-    # Step 1: DSL generation
-    yaml_path, case_id = step_dsl_generate(args.task, args.product)
+    # Step 1: DSL generation + evaluate loop (combined)
+    yaml_path, case_id = step_dsl_generate(
+        args.task, args.product,
+        max_retries=args.max_retries,
+        skip_eval=args.skip_eval,
+    )
 
-    # Step 2: DSL evaluation (optional)
-    if not args.skip_eval:
-        step_dsl_evaluate(yaml_path)
-
-    # Step 3: Benchmark run
+    # Step 2: Benchmark run
     result_path = step_run_benchmark(
         case_id=case_id,
         contact=args.contact,
@@ -204,7 +194,7 @@ def main():
         delay=args.delay,
     )
 
-    # Step 4: Report
+    # Step 3: Report
     step_report(
         result_path=result_path,
         publish=args.publish,

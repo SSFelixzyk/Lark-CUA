@@ -115,7 +115,13 @@ SYSTEM = """\
 """
 
 
-def build_messages(user_input: str, product: str, case_id: str) -> list[dict]:
+def build_messages(
+    user_input: str,
+    product: str,
+    case_id: str,
+    previous_yaml: str | None = None,
+    suggestions: list[str] | None = None,
+) -> list[dict]:
     ui_ctx   = load_ui_context(product)
     few_shot = load_few_shot(product)
     user_content = f"""\
@@ -131,44 +137,119 @@ def build_messages(user_input: str, product: str, case_id: str) -> list[dict]:
 ## 用户的测试描述
 {user_input}
 """
+    if previous_yaml and suggestions:
+        feedback_lines = "\n".join(f"- {s}" for s in suggestions)
+        user_content += f"""
+## 上一次生成的结果（请在此基础上修改，不要重新生成）
+{previous_yaml}
+
+## 评审反馈（必须修复以下问题后重新输出完整 YAML）
+{feedback_lines}
+"""
     return [
         {"role": "system", "content": SYSTEM},
         {"role": "user",   "content": user_content},
     ]
 
 
-# ── Core ──────────────────────────────────────────────────────────────────────
-
-def generate(user_input: str, product: str) -> tuple[dict, Path]:
-    case_id  = next_case_id(product)
-    messages = build_messages(user_input, product, case_id)
-
-    print(f"[generator] calling Doubao for case {case_id}...")
-    raw = chat(messages, max_tokens=1500)
-
-    # Strip accidental markdown fences
+def _parse_raw(raw: str, case_id: str) -> dict:
+    """Strip fences, parse YAML, enforce fixed fields."""
     raw = re.sub(r"^```ya?ml\s*", "", raw.strip(), flags=re.IGNORECASE)
     raw = re.sub(r"\s*```\s*$",   "", raw.strip())
-
     try:
         parsed = yaml.safe_load(raw)
     except yaml.YAMLError as e:
         raise ValueError(f"Model output is not valid YAML:\n{e}\n\nRaw:\n{raw}")
-
     if not isinstance(parsed, dict):
         raise ValueError(f"Expected a YAML mapping, got: {type(parsed)}\n\nRaw:\n{raw}")
-
-    # Enforce fixed fields
     parsed["id"]        = case_id
     parsed["generated"] = True
+    return parsed
 
-    out_dir  = GENERATED_DIR / product
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{case_id}.yaml"
 
+def _save(parsed: dict, out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         yaml.dump(parsed, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
+
+# ── Core ──────────────────────────────────────────────────────────────────────
+
+def generate(user_input: str, product: str) -> tuple[dict, Path]:
+    """Single-shot generation (no evaluate loop). Saves immediately."""
+    case_id  = next_case_id(product)
+    out_path = GENERATED_DIR / product / f"{case_id}.yaml"
+
+    print(f"[generator] calling Doubao for case {case_id}...")
+    raw    = chat(build_messages(user_input, product, case_id), max_tokens=1500)
+    parsed = _parse_raw(raw, case_id)
+    _save(parsed, out_path)
+    return parsed, out_path
+
+
+def generate_loop(
+    user_input: str,
+    product: str,
+    max_retries: int = 3,
+) -> tuple[dict, Path]:
+    """
+    Generate → evaluate → refine loop.
+    Only the final passing (or last) version is written to disk.
+    Intermediate attempts stay in memory.
+    """
+    from dsl.evaluator import evaluate_text, VERDICT_LABEL
+
+    case_id  = next_case_id(product)
+    out_path = GENERATED_DIR / product / f"{case_id}.yaml"
+
+    previous_yaml: str | None = None
+    suggestions:   list[str] | None = None
+    parsed: dict = {}
+
+    for attempt in range(1, max_retries + 1):
+        print(f"[generator] attempt {attempt}/{max_retries} — {case_id}")
+        messages = build_messages(
+            user_input, product, case_id,
+            previous_yaml=previous_yaml,
+            suggestions=suggestions,
+        )
+        raw = chat(messages, max_tokens=1500)
+        try:
+            parsed = _parse_raw(raw, case_id)
+        except ValueError as e:
+            print(f"  [generator] parse error: {e}")
+            continue
+
+        yaml_text = yaml.dump(parsed, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+        print(f"[evaluator] scoring attempt {attempt}...")
+        result = evaluate_text(yaml_text, product, case_id)
+        verdict = result["verdict"]
+        overall = result["overall"]
+        label   = VERDICT_LABEL.get(verdict, verdict)
+        print(f"  => {label}  overall={overall}/2")
+
+        for dim, v in result["scores"].items():
+            mark = "[2]" if v["score"] == 2 else ("[1]" if v["score"] == 1 else "[0]")
+            print(f"     {mark} {dim:<22} {v['reason']}")
+
+        if result.get("suggestions"):
+            print("  Suggestions:")
+            for s in result["suggestions"]:
+                print(f"    - {s}")
+
+        if verdict == "ready":
+            print(f"[generator] passed on attempt {attempt}, saving -> {out_path}")
+            _save(parsed, out_path)
+            return parsed, out_path
+
+        # Prepare for next attempt
+        previous_yaml = yaml_text
+        suggestions   = result.get("suggestions") or []
+
+    # Max retries exhausted — save best-effort result
+    print(f"[generator] max retries reached, saving last attempt -> {out_path}")
+    _save(parsed, out_path)
     return parsed, out_path
 
 
@@ -181,10 +262,15 @@ def main():
                         choices=list(PRODUCT_PREFIX.keys()),
                         help="Target Feishu product")
     parser.add_argument("--evaluate", action="store_true",
-                        help="Run DSL evaluator immediately after generation")
+                        help="Run generate→evaluate loop until DSL passes quality check")
+    parser.add_argument("--max-retries", type=int, default=3,
+                        help="Max refinement attempts in loop mode (default 3)")
     args = parser.parse_args()
 
-    parsed, out_path = generate(args.description, args.product)
+    if args.evaluate:
+        parsed, out_path = generate_loop(args.description, args.product, args.max_retries)
+    else:
+        parsed, out_path = generate(args.description, args.product)
 
     print(f"\n[generator] saved -> {out_path}\n")
     print("=" * 60)
