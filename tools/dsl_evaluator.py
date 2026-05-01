@@ -170,7 +170,7 @@ def main():
     print(f"{'─' * 60}")
     for dim in DIM_ORDER:
         v = result["scores"].get(dim, {})
-        bar = "██" if v.get("score") == 2 else ("█░" if v.get("score") == 1 else "░░")
+        bar = "[2]" if v.get("score") == 2 else ("[1]" if v.get("score") == 1 else "[0]")
         print(f"  {bar}  {dim:<20} {v.get('score', '?')}/2  {v.get('reason', '')}")
     print(f"{'=' * 60}\n")
 

@@ -78,11 +78,40 @@ def load_cases(product_filter=None, level_filter=None, tag_filter=None, case_ids
         "gui": BENCHMARK_DIR / "gui_primitives.yaml",
     }
 
+    # Also scan generated/ subdirectories
+    generated_dir = BENCHMARK_DIR / "generated"
+    if generated_dir.exists():
+        for yaml_path in sorted(generated_dir.rglob("*.yaml")):
+            product = yaml_path.parent.name  # e.g. generated/im/IM_GEN_001.yaml → "im"
+            if product not in files:
+                files[product] = None  # placeholder, loaded individually below
+            # Load each generated file as a single-case "product"
+            with open(yaml_path, encoding="utf-8") as f:
+                case = yaml.safe_load(f)
+            if not isinstance(case, dict) or "id" not in case:
+                continue
+            case.setdefault("product", product)
+            if product_filter and case["product"] != product_filter:
+                continue
+            if level_filter and case.get("level") != level_filter:
+                continue
+            if tag_filter and tag_filter not in case.get("tags", []):
+                continue
+            if case_ids_filter and case["id"] not in case_ids_filter:
+                continue
+            # Avoid duplicates if also in main yaml
+            files[f"_gen_{case['id']}"] = case  # store case directly
+
     cases = []
-    for product, path in files.items():
+    for product, path_or_case in files.items():
+        if product.startswith("_gen_"):
+            cases.append(path_or_case)
+            continue
+        if path_or_case is None:
+            continue
         if product_filter and product != product_filter:
             continue
-        with open(path, encoding="utf-8") as f:
+        with open(path_or_case, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         for case in data.get("cases", []):
             case["product"] = product
@@ -174,7 +203,7 @@ def run_case(
                 ],
             }
             print(f"  [verify] {vr.overall.upper()}  "
-                  + "  ".join(f"{'✓' if c.passed else ('✗' if c.passed is False else '?')}{c.method}"
+                  + "  ".join(f"{'OK' if c.passed else ('NG' if c.passed is False else '??')}/{c.method}"
                                for c in vr.checks))
         except Exception as e:
             print(f"  [verify] skipped ({e})")

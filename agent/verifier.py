@@ -47,7 +47,7 @@ class VerificationResult:
     def summary(self) -> str:
         lines = [f"Verification [{self.overall.upper()}]  case={self.case_id}"]
         for c in self.checks:
-            mark = "✓" if c.passed else ("✗" if c.passed is False else "?")
+            mark = "OK" if c.passed else ("NG" if c.passed is False else "??")
             lines.append(f"  {mark} [{c.method}] {c.checkpoint[:60]}  — {c.reason}")
         return "\n".join(lines)
 
