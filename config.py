@@ -21,3 +21,9 @@ HISTORY_TURNS = 6     # number of past (user+assistant) turns to keep in context
 # Set VM_MODE=true in .env to enable; set VM_SERVER_URL to the VM's action server address.
 VM_MODE = os.environ.get("VM_MODE", "false").lower() == "true"
 VM_SERVER_URL = os.environ.get("VM_SERVER_URL", "http://192.168.1.100:8765")
+
+# Feishu open-platform credentials (for report publisher)
+FEISHU_APP_ID     = os.environ.get("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
+FEISHU_REPORT_FOLDER = os.environ.get("FEISHU_REPORT_FOLDER", "")
+FEISHU_HOST       = os.environ.get("FEISHU_HOST", "https://feishu.cn")

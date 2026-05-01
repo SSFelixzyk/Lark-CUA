@@ -7,18 +7,21 @@ Two verification layers:
 
 Usage (from code):
     from agent.verifier import verify
-    vr = verify(case, final_screenshot_path)
+    vr = verify(case, final_screenshot_path, screenshot_dir=case_screenshot_dir)
 
 Usage (CLI):
     python agent/verifier.py tests/benchmark/generated/im/IM_GEN_001.yaml \
-        --screenshot screenshots/run_xxx/IM_GEN_001/step05_finished.png
+        --screenshot screenshots/run_xxx/IM_GEN_001/step05_finished.png \
+        --screenshot-dir screenshots/run_xxx/IM_GEN_001/
 """
 
 import json
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -90,18 +93,34 @@ def _run_cli(*args: str, timeout: int = 15) -> tuple[bool, dict | list | None, s
 
 # ── CLI verification strategies ───────────────────────────────────────────────
 
-def _cli_im_message(expected_text: str, chat_name: str = "") -> CheckResult:
-    """Search for a sent message by keyword."""
+def _cli_im_message(
+    expected_text: str, chat_name: str = "", since: datetime | None = None
+) -> CheckResult:
+    """Search for a sent message by keyword, filtered to messages after `since`."""
     checkpoint = f"消息「{expected_text}」已发送"
-    ok, data, raw = _run_cli(f'im +messages-search --query "{expected_text}"')
-    if not ok:
-        err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
-        return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
-
-    items = (data or {}).get("items", []) if isinstance(data, dict) else (data or [])
-    if items:
-        return CheckResult(checkpoint, "cli", True, f"找到 {len(items)} 条匹配消息", raw[:200])
-    return CheckResult(checkpoint, "cli", False, "未找到包含该关键词的消息", raw[:200])
+    since_ts = since.timestamp() if since else None
+    last_raw = ""
+    for attempt in range(3):
+        ok, data, raw = _run_cli(f'im +messages-search --query "{expected_text}"')
+        last_raw = raw
+        if not ok:
+            err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
+            return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
+        items = (data or {}).get("items", []) if isinstance(data, dict) else (data or [])
+        if since_ts and items:
+            # Feishu message create_time is a Unix timestamp string (seconds)
+            items = [
+                item for item in items
+                if isinstance(item, dict)
+                and float(item.get("create_time", 0)) >= since_ts
+            ]
+        if items:
+            label = f"找到 {len(items)} 条匹配消息" + (f"（{since.strftime('%H:%M:%S')} 之后）" if since else "")
+            return CheckResult(checkpoint, "cli", True, label, raw[:200])
+        if attempt < 2:
+            time.sleep(4)
+    msg = "未找到测试开始后包含该关键词的消息" if since_ts else "未找到包含该关键词的消息"
+    return CheckResult(checkpoint, "cli", False, msg, last_raw[:200])
 
 
 def _cli_calendar_event(title: str) -> CheckResult:
@@ -201,7 +220,9 @@ def _vlm_check(checkpoint: str, screenshot_path: Path) -> CheckResult:
 
 # ── Routing ───────────────────────────────────────────────────────────────────
 
-def _route_cli_verification(v: dict) -> CheckResult | None:
+def _route_cli_verification(
+    v: dict, since: datetime | None = None
+) -> CheckResult | None:
     """
     Route a structured cli_verification entry to the appropriate CLI check.
 
@@ -213,7 +234,7 @@ def _route_cli_verification(v: dict) -> CheckResult | None:
     """
     t = v.get("type", "")
     if t == "im_message":
-        return _cli_im_message(v.get("expected_text", ""), v.get("chat_name", ""))
+        return _cli_im_message(v.get("expected_text", ""), v.get("chat_name", ""), since=since)
     if t == "calendar_event":
         return _cli_calendar_event(v.get("title", ""))
     if t == "drive_doc":
@@ -250,13 +271,35 @@ def _infer_cli_checks(case: dict) -> list[CheckResult]:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def verify(case: dict, screenshot_path: Path | None = None) -> VerificationResult:
+def _collect_step_shots(screenshot_dir: Path | None) -> list[Path]:
+    """Return sorted list of step screenshots from the case run directory."""
+    if not screenshot_dir or not screenshot_dir.exists():
+        return []
+    shots = sorted(
+        [p for p in screenshot_dir.glob("step*_*.png") if not p.stem.endswith("_pending")],
+        key=lambda p: p.name,
+    )
+    return shots
+
+
+def verify(
+    case: dict,
+    screenshot_path: Path | None = None,
+    screenshot_dir: Path | None = None,
+    run_start: datetime | None = None,
+) -> VerificationResult:
     """
     Run all verifications for a completed case.
 
     Args:
         case:            The benchmark YAML case dict (must have 'id', 'checkpoints', etc.)
-        screenshot_path: Path to the final step screenshot (for VLM checks)
+        screenshot_path: Path to the final step screenshot (fallback for VLM checks)
+        screenshot_dir:  Directory containing all per-step screenshots; when provided,
+                         each checkpoint is matched to its corresponding step screenshot
+                         rather than all using the final screenshot.
+        run_start:       Datetime when the case started; CLI checks filter results to
+                         only objects created after this time, preventing false positives
+                         from previous runs with identical content.
 
     Returns:
         VerificationResult with per-checkpoint results and overall verdict
@@ -265,14 +308,17 @@ def verify(case: dict, screenshot_path: Path | None = None) -> VerificationResul
     checks: list[CheckResult] = []
     cli_ok = _cli_available()
 
+    # Collect ordered step screenshots (checkpoint[i] → step_shots[i] if available)
+    step_shots = _collect_step_shots(screenshot_dir)
+
     # 1. Structured CLI verifications (from yaml field)
     for v in case.get("cli_verifications", []):
         if cli_ok:
-            result = _route_cli_verification(v)
+            result = _route_cli_verification(v, since=run_start)
             if result:
                 checks.append(result)
                 continue
-        # CLI unavailable or unknown type — fall back to VLM
+        # CLI unavailable or unknown type — fall back to VLM (use final screenshot)
         if screenshot_path:
             desc = v.get("expected_text") or v.get("title") or v.get("name") or str(v)
             checks.append(_vlm_check(f"验证: {desc}", screenshot_path))
@@ -281,10 +327,12 @@ def verify(case: dict, screenshot_path: Path | None = None) -> VerificationResul
     if not case.get("cli_verifications") and cli_ok:
         checks.extend(_infer_cli_checks(case))
 
-    # 3. VLM checks for each checkpoint (if screenshot available)
-    if screenshot_path:
-        for cp in case.get("checkpoints", []):
-            checks.append(_vlm_check(cp, screenshot_path))
+    # 3. VLM checks for each checkpoint — use matching step screenshot when available
+    for i, cp in enumerate(case.get("checkpoints", [])):
+        # Prefer the step screenshot at the same index; fall back to final screenshot
+        shot = step_shots[i] if i < len(step_shots) else screenshot_path
+        if shot:
+            checks.append(_vlm_check(cp, shot))
 
     # 4. Compute overall verdict
     if not checks:
@@ -308,13 +356,15 @@ def main():
     parser = argparse.ArgumentParser(description="Verify a completed benchmark case")
     parser.add_argument("yaml_path", help="Path to the case YAML file")
     parser.add_argument("--screenshot", help="Path to final screenshot (for VLM checks)")
+    parser.add_argument("--screenshot-dir", help="Directory with all per-step screenshots")
     args = parser.parse_args()
 
     with open(args.yaml_path, encoding="utf-8") as f:
         case = yaml.safe_load(f)
 
     shot = Path(args.screenshot) if args.screenshot else None
-    vr = verify(case, shot)
+    shot_dir = Path(args.screenshot_dir) if args.screenshot_dir else None
+    vr = verify(case, shot, screenshot_dir=shot_dir)
     print(vr.summary())
 
 

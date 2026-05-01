@@ -4,198 +4,295 @@
 
 用多模态大模型（豆包 2.0 Vision）像真实用户一样看着屏幕操作飞书，完成自动化功能测试，无需元素选择器。
 
+全流程：**自然语言 → DSL 用例生成 → GUI 自动执行 → 双层验证 → AI 分析报告 → 发布飞书文档**
+
+---
+
+## 功能概览
+
+| 模块 | 能力 |
+|------|------|
+| **DSL 生成** | 自然语言 → YAML 测试用例（含 ui_hints、cli_verifications、checkpoints） |
+| **DSL 评分** | 5 维度 0/1/2 打分（UI 准确性、可执行性、可验证性、难度、完整性） |
+| **GUI Agent** | ReAct 循环：截图 → 豆包 Vision → 解析坐标 → pyautogui 执行 |
+| **双层验证** | CLI（lark-cli 结构化查询）+ VLM（截图断言），支持时间过滤防重复 |
+| **测试报告** | MD 归档 + 飞书云文档（每步截图 + Doubao AI 分析与建议） |
+| **Benchmark** | 按产品/等级/标签/ID 过滤，截图按 run/case/step 分层保存 |
+
 ---
 
 ## 项目结构
 
 ```
 Lark-Agent/
-├── config.py              # 全局配置，从 .env 加载密钥
-├── requirements.txt       # Python 依赖
-├── ui_tars/               # ByteDance UI-TARS action parser（Apache-2.0）
-│   ├── action_parser.py   # VLM 输出解析 + pyautogui 代码生成
-│   └── prompt.py          # 原始 prompt 模板参考
-├── llm/
-│   └── doubao_client.py   # 火山引擎 ARK（豆包）API 封装
+├── config.py                   # 全局配置，从 .env 加载
+├── requirements.txt
+├── run_pipeline.py             # 一键全流程入口
+│
 ├── agent/
-│   ├── prompts.py         # 飞书专用 system prompt
-│   ├── screenshot.py      # 全屏截图（mss）
-│   ├── executor.py        # 解析 + 执行 pyautogui，DPI 自动处理
-│   └── loop.py            # ReAct 主循环，管理历史与报告
-├── dsl/                   # M3：测试用例 DSL（待实现）
-├── report/                # M4：结构化测试报告（待实现）
+│   ├── loop.py                 # ReAct 主循环，每步保存截图 + VLM 日志
+│   ├── executor.py             # 解析 + 执行 pyautogui（DPI 自动处理）
+│   ├── verifier.py             # 双层验证：CLI + VLM，支持时间过滤
+│   ├── prompts.py              # 飞书专用 system prompt
+│   └── screenshot.py           # 全屏截图（mss）
+│
+├── llm/
+│   ├── doubao_client.py        # 豆包 ARK API 封装
+│   └── feishu_api.py           # 飞书开放平台 API（token 管理、DocX、Drive）
+│
+├── tools/
+│   ├── dsl_generator.py        # 自然语言 → YAML 测试用例
+│   ├── dsl_evaluator.py        # DSL 质量评分（5 维度）
+│   └── report_publisher.py     # 生成 MD 报告 + 发布飞书云文档
+│
+├── report/
+│   ├── md.py                   # Markdown 报告渲染（含步骤锚点）
+│   ├── feishu_doc.py           # 飞书云文档发布（步骤配图 + AI 分析）
+│   └── insight_agent.py        # 豆包 AI 分析与改进建议生成
+│
 ├── tests/
-│   ├── test_api.py        # API 连通性 + 坐标格式验证
-│   └── test_loop.py       # 端到端运行入口
-└── docs/
-    ├── design.md          # 系统架构设计文档
-    └── analysis_report.md # UI-TARS 技术分析报告
+│   ├── run_benchmark.py        # Benchmark 批量运行入口
+│   ├── benchmark/              # 官方测试用例 YAML（im/docs/calendar/...）
+│   │   └── generated/          # DSL 生成的测试用例存放目录
+│   └── results/                # benchmark 结果 JSON
+│
+├── screenshots/
+│   └── run_{ts}/               # 每次运行一个文件夹
+│       └── {case_id}_{title}/  # 每个用例一个子文件夹
+│           ├── step01_{action}.png
+│           ├── step01_vlm.txt  # 对应步骤的 VLM 原始输出
+│           └── ...
+│
+├── reports/                    # 生成的 MD 报告
+├── docs/
+│   ├── ui_context/             # 各产品 UI 布局文档（供 DSL 生成使用）
+│   │   └── im.md
+│   └── design.md
+└── ui_tars/                    # ByteDance UI-TARS action parser（Apache-2.0）
 ```
 
 ---
 
 ## 快速开始
 
-### 1. 克隆与安装
-
-```bash
-git clone https://github.com/SSFelixzyk/Lark-CUA.git
-cd Lark-CUA
-pip install -r requirements.txt
-```
-
-### 2. 配置 API 密钥
-
-在项目根目录（`Lark-Agent/` 的**上一级**）创建 `.env` 文件：
-
-```
-EP-ID = ep-xxxxxxxxxxxxxxxx-xxxxx
-DOUBAO-API-KEY = ark-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-> 从火山引擎 ARK 控制台获取：推理接入点 ID（EP-ID）和 API Key。
-> `.env` 已在 `.gitignore` 中，不会被提交。
-
-### 3. 验证 API 与坐标格式
+### 1. 安装依赖
 
 ```bash
 cd Lark-Agent
+pip install -r requirements.txt
+npm install -g @larksuite/lark-cli   # 飞书 CLI，用于验证和报告发布
+```
+
+### 2. 配置 .env
+
+在 `Lark-Agent/` 目录下创建 `.env`（已加入 .gitignore）：
+
+```env
+# 豆包 API（火山引擎 ARK 控制台获取）
+EP-ID = ep-xxxxxxxxxxxxxxxx-xxxxx
+DOUBAO-API-KEY = ark-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# 飞书开放平台（open.feishu.cn/app）
+FEISHU_APP_ID = cli_xxxxxxxxxxxxxxxx
+FEISHU_APP_SECRET = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+FEISHU_REPORT_FOLDER = xxxxxxxxxxxxxxxxxxxxxxxx   # 报告文件夹 token
+FEISHU_HOST = https://<your-tenant>.feishu.cn
+```
+
+> **FEISHU_REPORT_FOLDER**：打开飞书云文档目标文件夹，URL 中 `/folder/` 后面那段即为 token。
+
+### 3. 登录飞书 CLI
+
+```bash
+lark-cli auth login   # 浏览器授权，一次即可
+```
+
+### 4. 验证环境
+
+```bash
 python tests/test_api.py
 ```
 
-正常输出应包含：
-- `[OK] API connection OK`
-- `FORMAT: Likely 0-1000 relative (doubao style)` — 确认 `model_type='doubao'`
+---
 
-### 4. 运行第一个任务
-
-确保飞书桌面客户端已打开并可见，然后：
+## 一键全流程
 
 ```bash
-python tests/test_loop.py
+python run_pipeline.py --task "打开与张三的单聊，发送「测试消息 Hello」" \
+                       --product im \
+                       --contact "张三" \
+                       --publish
 ```
 
-脚本倒计时 3 秒，请在此期间切换到飞书窗口。也可传入自定义任务：
+参数说明：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--task` | 自然语言任务描述 | 必填 |
+| `--product` | 飞书产品线 `im/docs/calendar/base/vc/mail` | `im` |
+| `--contact` | 替换 `<<TEST_CONTACT>>` 占位符 | 必填 |
+| `--group` | 替换 `<<TEST_GROUP>>` 占位符 | 可选 |
+| `--publish` | 完成后发布飞书云文档报告 | 关闭 |
+| `--no-insights` | 跳过 AI 分析（报告更快）| 关闭 |
+| `--skip-eval` | 跳过 DSL 质量评分 | 关闭 |
+| `--delay` | GUI 操作前等待秒数（切换到飞书窗口）| `5` |
+
+---
+
+## 各模块单独使用
+
+### DSL 生成
+
+从自然语言生成 YAML 测试用例：
 
 ```bash
-python tests/test_loop.py "在飞书 IM 中搜索群聊 XXX 并发送消息 Hello"
+# 生成 DSL（存入 tests/benchmark/generated/im/）
+python tools/dsl_generator.py --product im "在飞书 IM 中向张三发送消息「Hello」"
+
+# 生成并立即评分
+python tools/dsl_generator.py --product im --evaluate "..."
 ```
+
+输出示例：`tests/benchmark/generated/im/IM_GEN_003.yaml`
+
+---
+
+### DSL 评分
+
+对已有的 YAML 用例进行质量评分：
+
+```bash
+python tools/dsl_evaluator.py tests/benchmark/generated/im/IM_GEN_003.yaml
+
+# 保存评分结果为 .eval.json
+python tools/dsl_evaluator.py tests/benchmark/generated/im/IM_GEN_003.yaml --save
+```
+
+评分维度（各 0/1/2 分）：
+
+| 维度 | 说明 |
+|------|------|
+| `ui_accuracy` | UI 路径与真实界面一致性 |
+| `executability` | 步骤是否可直接执行 |
+| `verifiability` | 成功标准能否从截图判断 |
+| `difficulty` | 难度定级与步骤数是否匹配 |
+| `completeness` | 所有字段是否填写完整 |
+
+---
+
+### Benchmark 运行
+
+```bash
+# 运行所有 IM 用例
+python tests/run_benchmark.py --product im --contact "张三"
+
+# 只跑生成的用例，指定等级
+python tests/run_benchmark.py --product im --level L2 --contact "张三"
+
+# 跑指定 case ID
+python tests/run_benchmark.py --case-id IM_GEN_003 --contact "张三"
+
+# Dry run（只打印任务，不操作屏幕）
+python tests/run_benchmark.py --product im --dry-run
+```
+
+运行结果保存至 `tests/results/benchmark_{ts}.json`，截图保存至 `screenshots/run_{ts}/`。
+
+---
+
+### 生成报告
+
+```bash
+# 仅生成 Markdown 报告
+python tools/report_publisher.py tests/results/benchmark_XXXXXX.json
+
+# 生成 MD + 发布飞书云文档（含每步截图 + AI 分析）
+python tools/report_publisher.py tests/results/benchmark_XXXXXX.json --publish
+
+# 跳过 AI 分析（速度更快）
+python tools/report_publisher.py tests/results/benchmark_XXXXXX.json --publish --no-insights
+
+# 发布到指定文件夹
+python tools/report_publisher.py tests/results/benchmark_XXXXXX.json --publish --folder <folder_token>
+```
+
+飞书云文档结构：
+- 执行摘要（TSR、平均步骤、耗时）
+- 每个用例：操作轨迹（步骤文本 + 对应截图）→ 验证结果 → AI 分析与建议
+
+---
+
+### 单步任务（不走 Benchmark）
+
+```bash
+python tests/test_loop.py "在飞书日历中创建明天下午 3 点的会议"
+```
+
+---
+
+## 截图与日志结构
+
+每次 benchmark 运行后：
+
+```
+screenshots/
+└── run_20260430_215828/
+    └── IM_GEN_002_搜索联系人发测试消息/
+        ├── step01_hotkey.png    # 截图（按操作类型命名）
+        ├── step01_vlm.txt       # 豆包原始 Thought+Action 输出
+        ├── step02_type.png
+        ├── step02_vlm.txt
+        └── ...
+```
+
+---
+
+## 验证机制
+
+执行完成后自动触发双层验证：
+
+**CLI 层**（lark-cli 结构化查询，地面真值）
+- `im_message`：搜索消息关键词，过滤测试开始时间后的记录（防止历史消息误判）
+- `calendar_event`：查询近 7 天日程
+- `drive_doc`：搜索云文档标题
+- `im_chat`：查询群聊是否存在
+
+**VLM 层**（截图断言）
+- 每条 checkpoint 对应其执行步骤的截图（不全用最终截图）
+- 占位符 `<<TEST_CONTACT>>` 等在发送给 VLM 前自动替换
+
+---
+
+## 配置参考
+
+`config.py` 中的可调参数：
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `MAX_STEPS` | 单次任务最大步骤数 | `30` |
+| `STEP_WAIT_MS` | 执行操作后等待 UI 渲染的时间（ms）| `1500` |
+| `HISTORY_TURNS` | 保留的历史对话轮数 | `6` |
 
 ---
 
 ## VM 模式（OSWorld 风格隔离评测）
 
-### 概述
+VM 模式将执行环境迁移到 VMware 虚拟机，每次测试前还原快照保证环境干净。
 
-默认模式下 Agent 直接在本机运行，截图和操作都在本机执行。VM 模式将执行环境迁移到 VMware 虚拟机中，Agent 逻辑仍在宿主机运行，所有 GUI 操作通过 HTTP 发送到 VM 内的 Action Server 执行，每次测试前可还原快照保证环境干净。
-
-```
-宿主机（Agent + LLM 调用）
-    ↕ HTTP
-VM（飞书 + Action Server）
-```
-
-### 手动配置 VM（推荐）
-
-> ⚠️ `vm/provision.py` 目前不够稳定，建议按以下步骤手动完成 VM 配置。
-
-**第一步：准备 VM**
-
-1. 安装 VMware Workstation Pro（个人免费）
-2. 新建 Windows 11 虚拟机，分配 6GB 内存、4 核 CPU
-3. 安装 VMware Tools（VM → Install VMware Tools）
-4. 在 VM 内安装 Python 3.11+（勾选 "Add Python to PATH"）
-5. 在 VM 内安装飞书并登录账号
-
-**第二步：在 VM 内部署 Action Server**
-
-将 `vm/action_server.py` 复制到 VM 内（如 `C:\LarkCUA\`），安装依赖：
-
-```bash
-pip install flask pyautogui mss pillow pyperclip
-```
-
-注册为开机自启任务（在 VM 内 PowerShell 中运行）：
-
-```powershell
-$a = New-ScheduledTaskAction -Execute 'python.exe' -Argument 'C:\LarkCUA\action_server.py'
-$t = New-ScheduledTaskTrigger -AtLogOn
-Register-ScheduledTask -TaskName 'LarkCUAActionServer' -Action $a -Trigger $t -RunLevel Highest -Force
-```
-
-**第三步：打 base 快照**
-
-飞书处于正常登录状态时，在 VMware 菜单中：
-
-```
-VM → Snapshot → Take Snapshot → 名字填 base → OK
-```
-
-**第四步：配置宿主机 .env**
-
-```
+```env
 VM_MODE=true
 VM_SERVER_URL=http://<VM的IP>:8765
 ```
 
-VM 的 IP 可在 VM 内运行 `ipconfig` 查看，或在 VMware 菜单中查看。
-
-**第五步：验证连接**
-
-```powershell
-curl http://<VM的IP>:8765/health
-# 返回 {"status":"ok"} 即成功
-```
-
-### 运行 VM 模式 Benchmark
-
 ```bash
-# 每次 run 开始时还原一次快照（推荐）
 python tests/vm_runner.py \
   --vmx "C:\path\to\vm.vmx" \
   --snapshot base \
-  --product gui \
-  --reset never
-
-# 每个 case 前都还原快照（最严格隔离）
-python tests/vm_runner.py \
-  --vmx "C:\path\to\vm.vmx" \
-  --snapshot base \
-  --product gui \
-  --reset each
+  --product im \
+  --reset each     # each=每个case还原 | once=每次run还原
 ```
 
-### 切换回本地模式
-
-将 `.env` 中 `VM_MODE` 改为 `false`，直接运行：
-
-```bash
-python tests/run_benchmark.py --product gui --level L1
-```
-
----
-
-## 架构概览
-
-```
-自然语言任务
-    ↓
-[ReAct 循环]
-  截图（mss）
-    → 豆包 2.0 Vision（Thought + Action）
-    → action_parser 解析坐标
-    → pyautogui 执行
-    → 等待 UI 渲染
-    → 再截图 ...
-    ↓
-轻量验证（截图像素变化检测）
-    ↓
-检查点验证（VLM 判断具体视觉断言）
-    ↓
-StepRecord 报告
-```
-
-**坐标系统**：豆包 2.0 输出相对坐标（0~1000），`action_parser` 归一化为 [0,1]，乘以 `pyautogui.size()` 逻辑分辨率得到实际像素坐标，自动处理 DPI 缩放。
+详细配置见原 [VM 模式文档](#vm-模式-osworld-风格隔离评测-1)。
 
 ---
 
@@ -203,55 +300,12 @@ StepRecord 报告
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| M1 | 截图→豆包→解析→执行闭环，单步操作验证 | 完成 |
-| M2 | 多轮对话历史管理，IM 子产品 E2E 流程 | 进行中 |
-| M3 | 自然语言→测试 DSL 生成层 | 待实现 |
-| M4 | 结构化断言验证 + JSON 测试报告 | 待实现 |
-| M5 | 失败自愈，Electron AT 辅助验证 | 待实现 |
-
----
-
-## 队友开发指南
-
-### 关键文件入口
-
-| 想改什么 | 看哪里 |
-|----------|--------|
-| 系统 prompt / 飞书界面知识 | `agent/prompts.py` |
-| 动作执行逻辑 | `agent/executor.py` |
-| ReAct 循环 / 历史管理 | `agent/loop.py` |
-| 豆包 API 调用 | `llm/doubao_client.py` |
-| 坐标解析（不建议改） | `ui_tars/action_parser.py` |
-| 测试用例 DSL 设计 | `dsl/`（待实现） |
-| 报告生成 | `report/`（待实现） |
-
-### 添加新测试场景
-
-在 `tests/test_loop.py` 里的 `TASKS` 列表添加任务字符串，或直接命令行传参：
-
-```python
-TASKS = [
-    "点击飞书左侧导航栏中的「消息」图标",
-    "在日历中创建一个明天下午 3 点的会议",
-    # 在这里添加你的测试场景
-]
-```
-
-### DRY_RUN 模式
-
-不想真正操作屏幕时，在 `test_loop.py` 顶部设置：
-
-```python
-DRY_RUN = True
-```
-
-Agent 会打印 Thought 和 Action 但不执行 pyautogui。
-
-### 注意事项
-
-- 运行测试前确保飞书是前台窗口，否则点击坐标会打到其他窗口
-- Windows 高 DPI 屏幕已自动处理（使用 `pyautogui.size()` 逻辑坐标）
-- `type()` 动作默认走剪贴板粘贴（`Ctrl+V`），对中文友好；飞书搜索框若不响应，可在 `executor.py` 中切换为 `pyautogui.write()`
+| M1 | 截图→豆包→解析→执行闭环，单步操作验证 | ✅ 完成 |
+| M2 | 多轮对话历史管理，IM/Calendar/Drive E2E | ✅ 完成 |
+| M3 | 自然语言→DSL 生成 + 5 维评分 | ✅ 完成 |
+| M4 | CLI+VLM 双层验证 + Benchmark 框架 | ✅ 完成 |
+| M5 | AI 分析报告 + 飞书云文档自动发布 | ✅ 完成 |
+| M6 | 失败自愈，多产品线覆盖扩展 | 进行中 |
 
 ---
 
@@ -259,8 +313,8 @@ Agent 会打印 Thought 和 Action 但不执行 pyautogui。
 
 - [UI-TARS（ByteDance）](https://github.com/bytedance/UI-TARS) — action_parser 来源，Apache-2.0
 - [火山引擎 ARK 文档](https://www.volcengine.com/docs/82379) — 豆包 API
-- `docs/design.md` — 本项目完整架构设计
-- `docs/analysis_report.md` — UI-TARS 技术分析
+- [飞书开放平台](https://open.feishu.cn/document/) — lark-cli + DocX API
+- [larksuite/lark-cli](https://github.com/larksuite/cli) — 飞书 CLI 工具
 
 ---
 

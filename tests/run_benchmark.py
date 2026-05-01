@@ -178,8 +178,10 @@ def run_case(
         safe_title = re.sub(r'[\\/:*?"<>|]', "_", case["title"])[:30]
         screenshot_dir = run_screenshot_dir / f"{case['id']}_{safe_title}"
 
+    run_start = datetime.now()
     agent = LarkAgent(max_steps=case.get("timeout_steps", 20), screenshot_dir=screenshot_dir)
     result: RunResult = agent.run(task)
+    run_end = datetime.now()
 
     # Post-execution verification (CLI + VLM)
     verification = None
@@ -189,7 +191,18 @@ def run_case(
             final_shot = (
                 Path(result.steps[-1].screenshot) if result.steps else None
             )
-            vr = verify(case, final_shot)
+            # Fill placeholders in checkpoints/success_criteria before VLM assertion
+            case_filled = dict(case)
+            if case.get("checkpoints"):
+                case_filled["checkpoints"] = [
+                    fill_placeholders(cp, contact, group, meeting_id)
+                    for cp in case["checkpoints"]
+                ]
+            if case.get("success_criteria"):
+                case_filled["success_criteria"] = fill_placeholders(
+                    case["success_criteria"], contact, group, meeting_id
+                )
+            vr = verify(case_filled, final_shot, screenshot_dir=screenshot_dir, run_start=run_start)
             verification = {
                 "overall": vr.overall,
                 "checks": [
@@ -214,6 +227,8 @@ def run_case(
         "level": case["level"],
         "title": case["title"],
         "task": task,
+        "start_time": run_start.isoformat(timespec="seconds"),
+        "end_time": run_end.isoformat(timespec="seconds"),
         "status": result.status,
         "total_steps": result.total_steps,
         "elapsed_ms": result.elapsed_ms,

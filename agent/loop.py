@@ -108,6 +108,14 @@ class LarkAgent:
                 result.status = "error"
                 break
 
+            # Log raw VLM output to file for post-run review
+            try:
+                (self.screenshot_dir / f"step{step_num:02d}_vlm.txt").write_text(
+                    raw, encoding="utf-8"
+                )
+            except OSError:
+                pass
+
             # 4. Execute
             print(raw)
             exec_result = execute(raw)

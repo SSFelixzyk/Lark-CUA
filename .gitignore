@@ -5,6 +5,10 @@
 # Screenshots captured during runs
 screenshots/
 
+# Generated reports and benchmark results (run-specific data)
+reports/
+tests/results/
+
 # Python
 __pycache__/
 *.pyc
