@@ -48,7 +48,7 @@ def _abort(msg: str) -> None:
 
 def step_dsl_generate(task: str, product: str) -> Path:
     _section("Step 1 / 4 — DSL 生成")
-    from tools.dsl_generator import generate
+    from dsl.generator import generate
     case, yaml_path = generate(task, product)
     print(f"[DSL] 生成完成: {yaml_path}")
     print(f"[DSL] case_id: {case.get('id')}  level: {case.get('level')}")
@@ -59,7 +59,7 @@ def step_dsl_generate(task: str, product: str) -> Path:
 
 def step_dsl_evaluate(yaml_path: Path) -> None:
     _section("Step 2 / 4 — DSL 评分")
-    from tools.dsl_evaluator import evaluate, VERDICT_LABEL, DIM_ORDER
+    from dsl.evaluator import evaluate, VERDICT_LABEL, DIM_ORDER
     result = evaluate(yaml_path)
     print(f"  Overall : {result['overall']}/2  [{VERDICT_LABEL.get(result['verdict'], result['verdict'])}]")
     for dim in DIM_ORDER:
