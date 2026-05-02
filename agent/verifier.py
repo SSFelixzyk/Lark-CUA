@@ -98,7 +98,6 @@ def _cli_im_message(
 ) -> CheckResult:
     """Search for a sent message by keyword, filtered to messages after `since`."""
     checkpoint = f"消息「{expected_text}」已发送"
-    since_ts = since.timestamp() if since else None
     last_raw = ""
     for attempt in range(3):
         ok, data, raw = _run_cli(f'im +messages-search --query "{expected_text}"')
@@ -106,20 +105,38 @@ def _cli_im_message(
         if not ok:
             err = (data or {}).get("error", {}).get("message", raw) if isinstance(data, dict) else raw
             return CheckResult(checkpoint, "cli", None, f"CLI 调用失败: {err}", raw)
-        items = (data or {}).get("items", []) if isinstance(data, dict) else (data or [])
-        if since_ts and items:
-            # Feishu message create_time is a Unix timestamp string (seconds)
-            items = [
-                item for item in items
-                if isinstance(item, dict)
-                and float(item.get("create_time", 0)) >= since_ts
-            ]
-        if items:
-            label = f"找到 {len(items)} 条匹配消息" + (f"（{since.strftime('%H:%M:%S')} 之后）" if since else "")
+
+        # lark-cli response: {"ok":true, "data": {"messages": [...], ...}}
+        messages = (
+            (data or {}).get("data", {}).get("messages", [])
+            if isinstance(data, dict) else []
+        )
+
+        if since and messages:
+            # create_time format: "2026-05-01 16:02" (minute precision, local time)
+            since_dt = since.replace(second=0, microsecond=0)
+            filtered = []
+            for m in messages:
+                ct = m.get("create_time", "")
+                try:
+                    # Strip seconds if present, parse to naive datetime
+                    ct_dt = datetime.strptime(ct[:16], "%Y-%m-%d %H:%M")
+                    if ct_dt >= since_dt.replace(tzinfo=None):
+                        filtered.append(m)
+                except ValueError:
+                    filtered.append(m)  # can't parse → keep
+            messages = filtered
+
+        if messages:
+            label = f"找到 {len(messages)} 条匹配消息"
+            if since:
+                label += f"（{since.strftime('%H:%M:%S')} 之后）"
             return CheckResult(checkpoint, "cli", True, label, raw[:200])
+
         if attempt < 2:
             time.sleep(4)
-    msg = "未找到测试开始后包含该关键词的消息" if since_ts else "未找到包含该关键词的消息"
+
+    msg = "未找到包含该关键词的消息" + ("（测试开始后）" if since else "")
     return CheckResult(checkpoint, "cli", False, msg, last_raw[:200])
 
 
