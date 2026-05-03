@@ -1,0 +1,19 @@
+id: DOC_GEN_001
+level: L2
+title: 文档插入任务列表
+task: 「在可编辑云文档中插入「任务列表」内容」
+ui_hints: 编辑区顶部工具栏中间有「插入」按钮，或悬停编辑区目标行左侧可唤起「+」插入按钮，点击后选择「任务列表」即可插入
+preconditions:
+- 飞书已正常登录
+- 已打开一个可编辑的云文档
+success_criteria: 文档编辑区显示可勾选的任务列表组件
+checkpoints:
+- 可编辑云文档编辑界面已打开
+- 任务列表已出现在文档编辑区
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- insert
+- content
+generated: true

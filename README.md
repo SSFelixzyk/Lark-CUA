@@ -13,6 +13,7 @@
 | 模块 | 能力 |
 |------|------|
 | **DSL 生成** | 自然语言 → YAML 测试用例（含 ui_hints、cli_verifications、checkpoints） |
+| **文档驱动生成** | 读取飞书云文档 → 自动提取可测功能点 → 批量生成 DSL 用例 |
 | **DSL 评分** | 5 维度 0/1/2 打分（UI 准确性、可执行性、可验证性、难度、完整性） |
 | **GUI Agent** | ReAct 循环：截图 → 豆包 Vision → 解析坐标 → pyautogui 执行 |
 | **双层验证** | CLI（lark-cli 结构化查询）+ VLM（截图断言），支持时间过滤防重复 |
@@ -43,6 +44,7 @@ Lark-Agent/
 ├── tools/
 │   ├── dsl_generator.py        # 自然语言 → YAML 测试用例
 │   ├── dsl_evaluator.py        # DSL 质量评分（5 维度）
+│   ├── doc_case_generator.py   # 飞书云文档 → 批量 DSL 用例生成
 │   └── report_publisher.py     # 生成 MD 报告 + 发布飞书云文档
 │
 ├── report/
@@ -117,6 +119,8 @@ python tests/test_api.py
 
 ## 一键全流程
 
+### 流程 A：单任务
+
 ```bash
 python run_pipeline.py --task "打开与张三的单聊，发送「测试消息 Hello」" \
                        --product im \
@@ -124,14 +128,30 @@ python run_pipeline.py --task "打开与张三的单聊，发送「测试消息 
                        --publish
 ```
 
+### 流程 B：文档驱动（从飞书云文档批量生成并运行）
+
+```bash
+python run_pipeline.py --from-doc "https://xxx.feishu.cn/docx/..." \
+                       --product im \
+                       --contact "张三" \
+                       --levels L1,L2 \
+                       --max-cases 5 \
+                       --publish
+```
+
+流程 B 会自动完成：读取文档 → 提取功能点 → 批量生成 DSL → GUI 执行 → 报告发布。
+
 参数说明：
 
 | 参数 | 说明 | 默认 |
 |------|------|------|
-| `--task` | 自然语言任务描述 | 必填 |
+| `--task` | 自然语言任务描述（流程 A，与 `--from-doc` 二选一）| — |
+| `--from-doc` | 飞书云文档 URL 或 token（流程 B，与 `--task` 二选一）| — |
 | `--product` | 飞书产品线 `im/docs/calendar/base/vc/mail` | `im` |
 | `--contact` | 替换 `<<TEST_CONTACT>>` 占位符 | 必填 |
 | `--group` | 替换 `<<TEST_GROUP>>` 占位符 | 可选 |
+| `--levels` | 生成用例的难度等级，逗号分隔（流程 B）| `L1,L2` |
+| `--max-cases` | 最多生成几个用例（流程 B）| `10` |
 | `--publish` | 完成后发布飞书云文档报告 | 关闭 |
 | `--no-insights` | 跳过 AI 分析（报告更快）| 关闭 |
 | `--skip-eval` | 跳过 DSL 质量评分 | 关闭 |
@@ -154,6 +174,46 @@ python tools/dsl_generator.py --product im --evaluate "..."
 ```
 
 输出示例：`tests/benchmark/generated/im/IM_GEN_003.yaml`
+
+---
+
+### 文档驱动用例生成
+
+读取飞书云文档，自动提取可测功能点并批量生成 DSL 用例：
+
+```bash
+# 基本用法
+python tools/doc_case_generator.py \
+    --doc "https://xxx.feishu.cn/docx/..." \
+    --product im
+
+# 指定等级和上限
+python tools/doc_case_generator.py \
+    --doc "https://xxx.feishu.cn/docx/..." \
+    --product docs \
+    --levels L1,L2 \
+    --max-cases 5
+
+# 跳过评分循环（更快，质量略低）
+python tools/doc_case_generator.py \
+    --doc "https://xxx.feishu.cn/docx/..." \
+    --product im \
+    --no-evaluate
+```
+
+流程说明：
+1. 通过 `lark-cli docs +fetch` 读取文档 Markdown 内容
+2. 按 `##` 标题分段，每段调豆包提取"可测操作功能点"列表
+3. 按等级过滤后，每个功能点调 `generate_loop()` 生成并评分精炼
+4. 生成的用例保存至 `tests/benchmark/generated/<product>/`
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--doc` | 飞书文档 URL 或 token | 必填 |
+| `--product` | 目标产品线 | 必填 |
+| `--levels` | 难度等级过滤，逗号分隔 | `L1,L2` |
+| `--max-cases` | 最多生成几个用例 | `10` |
+| `--no-evaluate` | 跳过生成→评分精炼循环 | 关闭 |
 
 ---
 

@@ -1,22 +1,27 @@
 """
 Lark-CUA 全流程一键启动脚本。
 
-流程：
+流程 A（单任务）：
   1. DSL 生成  — 自然语言 → YAML 测试用例
-  2. DSL 评分  — 5 维度质量检查（可跳过）
-  3. GUI 执行  — Benchmark 运行（ReAct 循环 + 双层验证）
-  4. 报告发布  — MD 归档 + 飞书云文档（含步骤截图 + AI 分析）
+  2. GUI 执行  — Benchmark 运行（ReAct 循环 + 双层验证）
+  3. 报告发布  — MD 归档 + 飞书云文档（含步骤截图 + AI 分析）
+
+流程 B（文档驱动）：
+  1. 文档解析  — 读取飞书云文档 → 提取可测功能点
+  2. 批量生成  — 每个功能点 → DSL 用例（含评分精炼）
+  3. GUI 执行  — Benchmark 批量运行
+  4. 报告发布  — 同上
 
 用法示例：
+    # 流程 A：单任务
     python run_pipeline.py \\
         --task "打开与张三的单聊，发送「测试消息 Hello」" \\
-        --product im \\
-        --contact "张三" \\
-        --publish
+        --product im --contact "张三" --publish
 
-    # 跳过评分、跳过 AI 分析，快速运行
-    python run_pipeline.py --task "..." --product im --contact "张三" \\
-        --publish --skip-eval --no-insights
+    # 流程 B：文档驱动
+    python run_pipeline.py \\
+        --from-doc "https://xxx.feishu.cn/docx/..." \\
+        --product im --contact "张三" --levels L1,L2 --max-cases 5 --publish
 """
 
 import argparse
@@ -44,10 +49,10 @@ def _abort(msg: str) -> None:
     sys.exit(1)
 
 
-# ── Step 1: DSL generation (with built-in evaluate loop) ─────────────────────
+# ── Step 1-A: 单任务 DSL 生成 ─────────────────────────────────────────────────
 
 def step_dsl_generate(task: str, product: str, max_retries: int = 3, skip_eval: bool = False) -> tuple:
-    _section("Step 1 / 4 — DSL 生成 + 评审")
+    _section("Step 1 — DSL 生成 + 评审")
     if skip_eval:
         from dsl.generator import generate
         case, yaml_path = generate(task, product)
@@ -56,29 +61,63 @@ def step_dsl_generate(task: str, product: str, max_retries: int = 3, skip_eval: 
         case, yaml_path = generate_loop(task, product, max_retries=max_retries)
     print(f"[DSL] saved: {yaml_path}")
     print(f"[DSL] case_id: {case.get('id')}  level: {case.get('level')}")
-    return yaml_path, case.get("id")
+    return {case.get("id")}   # 返回 set，与文档模式接口统一
 
 
-# ── Step 3: Benchmark run ─────────────────────────────────────────────────────
+# ── Step 1-B: 文档驱动批量 DSL 生成 ──────────────────────────────────────────
+
+def step_doc_generate(
+    doc_url: str,
+    product: str,
+    levels: list[str],
+    max_cases: int,
+    skip_eval: bool,
+    max_retries: int,
+) -> set[str]:
+    _section(f"Step 1 — 文档解析 + 批量 DSL 生成（最多 {max_cases} 个用例）")
+    from tools.doc_case_generator import generate_from_doc
+
+    saved_paths = generate_from_doc(
+        doc=doc_url,
+        product=product,
+        levels=levels,
+        max_cases=max_cases,
+        evaluate=not skip_eval,
+        max_retries=max_retries,
+    )
+
+    if not saved_paths:
+        _abort("未能从文档中生成任何 DSL 用例，请检查文档内容或 --product 参数。")
+
+    case_ids = set()
+    for p in saved_paths:
+        # 文件名即 case_id，如 DOC_GEN_003.yaml → DOC_GEN_003
+        case_ids.add(p.stem)
+
+    print(f"\n[doc-gen] 共生成 {len(case_ids)} 个用例: {', '.join(sorted(case_ids))}")
+    return case_ids
+
+
+# ── Step 2: Benchmark 运行（接受多个 case_id）────────────────────────────────
 
 def step_run_benchmark(
-    case_id: str,
+    case_ids: set[str],
     contact: str,
     group: str,
     meeting_id: str,
     delay: int,
 ) -> Path:
-    _section("Step 2 / 3 — GUI 执行")
+    _section(f"Step 2 — GUI 执行（{len(case_ids)} 个用例）")
     from tests.run_benchmark import load_cases, run_case, save_results, print_summary
 
-    cases = load_cases(case_ids_filter={case_id})
+    cases = load_cases(case_ids_filter=case_ids)
     if not cases:
-        _abort(f"找不到 case_id={case_id}，请检查 DSL 生成是否成功。")
+        _abort(f"找不到 case_ids={case_ids}，请检查 DSL 生成是否成功。")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_screenshot_dir = config.SCREENSHOT_DIR / f"run_{ts}"
 
-    print(f"[bench] 即将运行: {case_id}")
+    print(f"[bench] 即将运行 {len(cases)} 个用例")
     print(f"[bench] {delay} 秒后开始，请切换到飞书窗口...")
     time.sleep(delay)
 
@@ -90,6 +129,8 @@ def step_run_benchmark(
         results.append(r)
         print(f"  => {r['status'].upper()}  steps={r['total_steps']}  "
               f"time={r['elapsed_ms']/1000:.1f}s")
+        if i < len(cases):
+            time.sleep(3)   # 用例间等待界面稳定
 
     print_summary(results)
     result_path = save_results(results, ts)
@@ -97,10 +138,10 @@ def step_run_benchmark(
     return result_path
 
 
-# ── Step 3: Report ────────────────────────────────────────────────────────────
+# ── Step 3: 报告 ──────────────────────────────────────────────────────────────
 
 def step_report(result_path: Path, publish: bool, no_insights: bool, folder: str) -> None:
-    _section("Step 3 / 3 — 报告生成")
+    _section("Step 3 — 报告生成")
     from report import md, feishu_doc, insight_agent
     from tools.report_publisher import REPORTS_DIR
 
@@ -147,54 +188,92 @@ def step_report(result_path: Path, publish: bool, no_insights: bool, folder: str
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Lark-CUA 全流程：自然语言 → DSL → GUI 执行 → 报告"
+        description="Lark-CUA 全流程：DSL 生成 → GUI 执行 → 报告"
     )
-    parser.add_argument("--task",        required=True,
-                        help="自然语言任务描述（将生成对应 DSL 用例）")
-    parser.add_argument("--product",     default="im",
-                        choices=["im", "docs", "calendar", "base", "vc", "mail"],
+
+    # ── 输入源（二选一）
+    src = parser.add_mutually_exclusive_group(required=True)
+    src.add_argument(
+        "--task",
+        help="自然语言任务描述（流程 A：生成单个用例）",
+    )
+    src.add_argument(
+        "--from-doc",
+        metavar="DOC_URL",
+        help="飞书云文档 URL 或 token（流程 B：批量生成用例）",
+    )
+
+    # ── 产品 & 占位符
+    parser.add_argument("--product", default="im",
+                        choices=["im", "docs", "calendar", "base", "vc", "mail", "gui"],
                         help="飞书产品线（默认 im）")
-    parser.add_argument("--contact",     default="<<TEST_CONTACT>>",
+    parser.add_argument("--contact", default="<<TEST_CONTACT>>",
                         help="替换 <<TEST_CONTACT>> 占位符")
-    parser.add_argument("--group",       default="CUA-Lark课题-6",
+    parser.add_argument("--group",   default="CUA-Lark课题-6",
                         help="替换 <<TEST_GROUP>> 占位符")
-    parser.add_argument("--meeting-id",  default="<<MEETING_ID>>",
+    parser.add_argument("--meeting-id", default="<<MEETING_ID>>",
                         help="替换 <<MEETING_ID>> 占位符")
+
+    # ── 文档模式专属参数
+    parser.add_argument("--levels",    default="L1,L2",
+                        help="[--from-doc] 生成的用例等级，逗号分隔（默认 L1,L2）")
+    parser.add_argument("--max-cases", type=int, default=10,
+                        help="[--from-doc] 最多生成几个用例（默认 10）")
+
+    # ── 通用参数
     parser.add_argument("--delay",       type=int, default=5,
-                        help="GUI 操作前等待秒数（默认 5，切换到飞书窗口）")
+                        help="GUI 执行前等待秒数（默认 5，切换到飞书窗口）")
     parser.add_argument("--publish",     action="store_true",
                         help="完成后发布飞书云文档报告")
     parser.add_argument("--folder",      default="",
                         help="飞书报告文件夹 token（覆盖 .env）")
     parser.add_argument("--skip-eval",   action="store_true",
-                        help="跳过 DSL 生成评审循环（单次生成直接用）")
+                        help="跳过 DSL 质量评审循环（更快，质量略低）")
     parser.add_argument("--max-retries", type=int, default=3,
-                        help="DSL 生成评审循环最大重试次数（默认 3）")
+                        help="DSL 评审循环最大重试次数（默认 3）")
     parser.add_argument("--no-insights", action="store_true",
-                        help="跳过 AI 分析（报告更快）")
+                        help="跳过报告 AI 分析（更快）")
     args = parser.parse_args()
 
+    # ── 打印启动信息
     print("\nLark-CUA Pipeline")
-    print(f"  任务: {args.task}")
+    if args.task:
+        print(f"  模式: 单任务")
+        print(f"  任务: {args.task}")
+    else:
+        print(f"  模式: 文档驱动")
+        print(f"  文档: {args.from_doc}")
+        print(f"  等级: {args.levels}  上限: {args.max_cases} 个")
     print(f"  产品: {args.product}  联系人: {args.contact}")
 
-    # Step 1: DSL generation + evaluate loop (combined)
-    yaml_path, case_id = step_dsl_generate(
-        args.task, args.product,
-        max_retries=args.max_retries,
-        skip_eval=args.skip_eval,
-    )
+    # ── Step 1：DSL 生成
+    if args.task:
+        case_ids = step_dsl_generate(
+            args.task, args.product,
+            max_retries=args.max_retries,
+            skip_eval=args.skip_eval,
+        )
+    else:
+        levels = [lv.strip() for lv in args.levels.split(",")]
+        case_ids = step_doc_generate(
+            doc_url=args.from_doc,
+            product=args.product,
+            levels=levels,
+            max_cases=args.max_cases,
+            skip_eval=args.skip_eval,
+            max_retries=args.max_retries,
+        )
 
-    # Step 2: Benchmark run
+    # ── Step 2：GUI 执行
     result_path = step_run_benchmark(
-        case_id=case_id,
+        case_ids=case_ids,
         contact=args.contact,
         group=args.group,
         meeting_id=args.meeting_id,
         delay=args.delay,
     )
 
-    # Step 3: Report
+    # ── Step 3：报告
     step_report(
         result_path=result_path,
         publish=args.publish,

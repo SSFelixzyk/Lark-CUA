@@ -1,0 +1,24 @@
+id: IM_GEN_005
+level: L2
+title: 给联系人发Hello消息
+task: 使用Ctrl+K激活「全局搜索框」，输入联系人「<<TEST_CONTACT>>」，点击搜索结果进入对应单聊界面，点击底部「消息输入框」输入「Hello」，按下回车键发送消息。
+ui_hints: 「全局搜索框」位于会话列表区顶部，可通过Ctrl+K快速激活，输入联系人名称后点击对应搜索结果进入单聊；「消息输入框」位于聊天内容区底部中间位置，输入文字后按Enter即可发送。
+preconditions:
+- 飞书桌面客户端已登录且处于前台
+- 联系人<<TEST_CONTACT>>已存在于通讯录中
+success_criteria: 聊天记录最底部出现内容为Hello的已发送消息气泡
+checkpoints:
+- 全局搜索框激活后可正常输入文字
+- 搜索结果列表中显示联系人<<TEST_CONTACT>>条目
+- 成功进入与<<TEST_CONTACT>>的单聊界面，顶部显示该联系人名称
+- 聊天记录最底部出现内容为Hello的已发送消息气泡
+cli_verifications:
+- type: im_message
+  expected_text: Hello
+expected_steps: 5
+timeout_steps: 10
+tags:
+- im
+- send_message
+- core
+generated: true

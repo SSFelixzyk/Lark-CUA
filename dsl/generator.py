@@ -152,10 +152,24 @@ def build_messages(
     ]
 
 
+def _sanitize_yaml(raw: str) -> str:
+    """
+    Fix LLM-generated YAML that uses reserved characters (@, `) at the start
+    of unquoted scalars — illegal in YAML 1.1 / PyYAML.
+    Wraps the offending value in double quotes without touching already-quoted values.
+    """
+    # List items:   - @foo  →  - "@foo"
+    raw = re.sub(r'^(\s*-\s+)(@[^"\n][^\n]*)', r'\1"\2"', raw, flags=re.MULTILINE)
+    # Mapping values:  key: @foo  →  key: "@foo"
+    raw = re.sub(r'^(\s*[\w][\w_-]*:\s+)(@[^"\n][^\n]*)', r'\1"\2"', raw, flags=re.MULTILINE)
+    return raw
+
+
 def _parse_raw(raw: str, case_id: str) -> dict:
-    """Strip fences, parse YAML, enforce fixed fields."""
+    """Strip fences, sanitize reserved chars, parse YAML, enforce fixed fields."""
     raw = re.sub(r"^```ya?ml\s*", "", raw.strip(), flags=re.IGNORECASE)
     raw = re.sub(r"\s*```\s*$",   "", raw.strip())
+    raw = _sanitize_yaml(raw)
     try:
         parsed = yaml.safe_load(raw)
     except yaml.YAMLError as e:
