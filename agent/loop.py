@@ -21,11 +21,14 @@ import config
 from agent.prompts import LARK_SYSTEM_PROMPT
 from agent.screenshot import capture
 from agent.executor import execute
+from agent.healer import (
+    HealTrigger, diagnose_and_heal, generate_memory_entry,
+)
 from llm.doubao_client import chat, build_user_message
 from ui_tars.action_parser import add_box_token
 
 # Steps allowed on a single checkpoint before force-advancing
-_CP_TIMEOUT = 5
+_CP_TIMEOUT = 6
 
 
 @dataclass
@@ -53,6 +56,11 @@ class RunResult:
     steps: list[StepRecord] = field(default_factory=list)
     # Maps checkpoint index → screenshot path taken when that checkpoint was reached
     checkpoint_shots: dict[int, str] = field(default_factory=dict)
+    # Self-heal tracking
+    heal_attempts: int = 0
+    heal_success: bool = False
+    heal_triggers: list[str] = field(default_factory=list)
+    learned_ui_hints: str = ""
 
     @property
     def total_steps(self):
@@ -121,11 +129,28 @@ def _sanitize_dirname(name: str) -> str:
 
 
 class LarkAgent:
-    def __init__(self, max_steps: int = config.MAX_STEPS, screenshot_dir: Path | str | None = None):
+    def __init__(
+        self,
+        max_steps: int = config.MAX_STEPS,
+        screenshot_dir: Path | str | None = None,
+        heal: bool = False,
+        heal_max: int = 2,
+        heal_triggers: set[str] | None = None,
+    ):
         self.max_steps = max_steps
         self.screenshot_dir = Path(screenshot_dir) if screenshot_dir else config.SCREENSHOT_DIR
+        self.heal = heal
+        self.heal_max = heal_max
+        # None = all triggers active; explicit set = only the listed ones
+        self._heal_triggers: set[str] = heal_triggers or {t.value for t in HealTrigger}
 
-    def run(self, task: str, checkpoints: list[str] | None = None) -> RunResult:
+    def run(
+        self,
+        task: str,
+        checkpoints: list[str] | None = None,
+        case_id: str = "",
+        case_title: str = "",
+    ) -> RunResult:
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
         result = RunResult(task=task, status="timeout")
         history: list[dict] = []
@@ -134,6 +159,15 @@ class LarkAgent:
         cp_list = list(checkpoints) if checkpoints else []
         cp_idx = 0          # index of the checkpoint currently being targeted
         steps_on_cp = 0     # steps spent on the current checkpoint without reaching it
+
+        # Self-heal state
+        heal_attempts = 0
+        heal_active: bool = False            # currently inside a healing episode
+        heal_cp_idx: int | None = None       # checkpoint index we're healing to reach
+        heal_step_records: list[dict] = []   # steps accumulated since heal triggered
+        heal_context: dict = {}              # diagnosis + new_strategy from diagnose_and_heal
+        heal_trigger_type: HealTrigger | None = None  # trigger that started current episode
+        cp_timeout_heal: bool = False     # set when a checkpoint times out, consumed at step end
 
         for step_num in range(1, self.max_steps + 1):
             t0 = time.time()
@@ -187,12 +221,37 @@ class LarkAgent:
                 cp_idx += 1
                 steps_on_cp = 0
                 print(f"  [checkpoint {active_cp_idx}] reached")
+
+                # Checkpoint completed during a healing episode — save ui_hints immediately
+                if heal_active and active_cp_idx == heal_cp_idx and heal_step_records:
+                    entry = generate_memory_entry(
+                        heal_context, heal_step_records,
+                        case_id=case_id, case_title=case_title,
+                        trigger=heal_trigger_type, checkpoint_idx=active_cp_idx,
+                    )
+                    result.learned_ui_hints = (
+                        (result.learned_ui_hints + "\n\n" + entry).strip()
+                        if result.learned_ui_hints else entry
+                    )
+                    result.heal_success = True
+                    heal_active = False
+                    heal_step_records = []
+                    heal_cp_idx = None
+                    heal_context = {}
+                    heal_trigger_type = None
+                    print(f"  [heal] checkpoint {active_cp_idx} reached — memory entry saved")
             else:
                 steps_on_cp += 1
                 if active_cp and steps_on_cp >= _CP_TIMEOUT:
-                    print(f"  [checkpoint {cp_idx}] timeout after {steps_on_cp} steps, advancing")
-                    cp_idx += 1
-                    steps_on_cp = 0
+                    if self.heal and "checkpoint_timeout" in self._heal_triggers:
+                        print(f"  [checkpoint {cp_idx}] timeout after {steps_on_cp} steps, triggering heal")
+                        cp_timeout_heal = True
+                        steps_on_cp = 0
+                        # cp_idx stays — healing re-targets this same checkpoint
+                    else:
+                        print(f"  [checkpoint {cp_idx}] timeout after {steps_on_cp} steps, advancing")
+                        cp_idx += 1
+                        steps_on_cp = 0
 
             # 5. Execute — timed
             t_exec = time.time()
@@ -240,16 +299,70 @@ class LarkAgent:
             )
             result.steps.append(rec)
 
+            # Accumulate steps for the active healing episode
+            if heal_active:
+                heal_step_records.append({"thought": rec.thought, "action": rec.pyautogui_code})
+
             # 7. Update history (keep last N turns)
             history.append(user_msg)
             history.append({"role": "assistant", "content": add_box_token(raw)})
             if len(history) > config.HISTORY_TURNS * 2:
                 history = history[-(config.HISTORY_TURNS * 2):]
 
-            # 8. Check terminal conditions
+            # 8. Check terminal conditions — with self-heal integration
             if exec_result["status"] == "done":
                 result.status = "done"
                 break
+
+            # ── Self-heal trigger detection ───────────────────────────────
+            heal_trigger: HealTrigger | None = None
+            if self.heal:
+                if cp_timeout_heal:
+                    heal_trigger = HealTrigger.CHECKPOINT_TIMEOUT
+                    cp_timeout_heal = False          # consume the flag
+
+            if heal_trigger and heal_attempts < self.heal_max:
+                heal_attempts += 1
+                result.heal_attempts = heal_attempts
+                result.heal_triggers.append(heal_trigger.value)
+
+                heal_shot = capture(
+                    self.screenshot_dir / f"step{step_num:02d}_heal{heal_attempts}.png"
+                )
+                heal = diagnose_and_heal(
+                    task=task, recent_history=history[-10:],
+                    screenshot_path=heal_shot, trigger=heal_trigger,
+                )
+                print(f"  [heal #{heal_attempts}][{heal_trigger.value}] {heal['diagnosis']}")
+                print(f"  [heal #{heal_attempts}] new strategy: {heal['new_strategy']}")
+
+                # Begin tracking this healing episode
+                heal_active = True
+                heal_cp_idx = active_cp_idx
+                heal_step_records = []
+                heal_context = {
+                    "diagnosis": heal["diagnosis"],
+                    "new_strategy": heal["new_strategy"],
+                }
+                heal_trigger_type = heal_trigger
+
+                history.append({
+                    "role": "system",
+                    "content": (
+                        f"[自愈模式/{heal_trigger.value}] 之前的路径失败"
+                        f"（{heal['diagnosis']}）。"
+                        f"新策略：{heal['new_strategy']}。"
+                    ),
+                })
+                continue
+
+            elif heal_trigger:
+                print(f"  [heal] max attempts ({self.heal_max}) exhausted "
+                      f"[{heal_trigger.value}] — FAILED")
+                result.status = "failed"
+                break
+            # ── End self-heal ─────────────────────────────────────────────
+
             if exec_result["status"] == "failed":
                 result.status = "failed"
                 break
@@ -257,6 +370,22 @@ class LarkAgent:
                 print(exec_result["error"])
                 result.status = "error"
                 break
+
+
+        # Fallback: heal was active but no checkpoint completed (case has no checkpoints).
+        # Save ui_hints if the task ultimately succeeded.
+        if heal_active and heal_step_records and result.status == "done":
+            entry = generate_memory_entry(
+                heal_context, heal_step_records,
+                case_id=case_id, case_title=case_title,
+                trigger=heal_trigger_type, checkpoint_idx=None,
+            )
+            result.learned_ui_hints = (
+                (result.learned_ui_hints + "\n\n" + entry).strip()
+                if result.learned_ui_hints else entry
+            )
+            result.heal_success = True
+            print("  [heal] task done — memory entry saved")
 
         return result
 

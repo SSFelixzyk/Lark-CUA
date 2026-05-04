@@ -63,6 +63,7 @@ RESULTS_DIR.mkdir(exist_ok=True)
 DEFAULT_CONTACT = "<<TEST_CONTACT>>"
 DEFAULT_GROUP = "CUA-Lark课题-6"
 DEFAULT_MEETING_ID = "<<MEETING_ID>>"
+DEFAULT_DOC = "<<TEST_DOC>>"
 
 
 # ── Loading ───────────────────────────────────────────────────────────────────
@@ -140,24 +141,68 @@ def parse_case_ids(case_id_args: list[str] | None) -> set[str]:
 
 
 def fill_placeholders(
-    text: str, contact: str, group: str, meeting_id: str = DEFAULT_MEETING_ID
+    text: str, contact: str, group: str,
+    meeting_id: str = DEFAULT_MEETING_ID,
+    doc: str = DEFAULT_DOC,
 ) -> str:
     text = text.replace("<<TEST_CONTACT>>", contact)
     text = text.replace("<<TEST_GROUP>>", group)
     text = text.replace("<<MEETING_ID>>", meeting_id)
+    text = text.replace("<<TEST_DOC>>", doc)
     text = text.replace("<<DATE>>", datetime.now().strftime("%Y%m%d"))
     return text
+
+
+# ── Heal helpers ──────────────────────────────────────────────────────────────
+
+MEMORY_DIR = Path(__file__).parent.parent / "memory"
+
+
+def _read_memory(product: str) -> str:
+    """Return the content of memory/<product>.md, or empty string if not found."""
+    mem_file = MEMORY_DIR / f"{product}.md"
+    if mem_file.exists():
+        return mem_file.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def _write_memory(product: str, entry: str) -> None:
+    """Append a heal memory entry to memory/<product>.md."""
+    MEMORY_DIR.mkdir(exist_ok=True)
+    mem_file = MEMORY_DIR / f"{product}.md"
+    try:
+        existing = mem_file.read_text(encoding="utf-8").strip() if mem_file.exists() else ""
+        content = (existing + "\n\n" + entry).strip() if existing else entry
+        mem_file.write_text(content + "\n", encoding="utf-8")
+        print(f"  [heal] memory entry written → memory/{product}.md")
+    except Exception as e:
+        print(f"  [heal] failed to write memory: {e}")
 
 
 # ── Running ───────────────────────────────────────────────────────────────────
 
 def run_case(
     case: dict, contact: str, group: str, meeting_id: str, dry_run: bool,
-    run_screenshot_dir=None,
+    run_screenshot_dir=None, doc: str = DEFAULT_DOC,
+    heal_config: dict | None = None,
+    use_memory: bool = True,
 ) -> dict:
-    task = fill_placeholders(case["task"].strip(), contact, group, meeting_id)
+    """
+    heal_config keys (all optional):
+        heal (bool)         — enable self-healing
+        heal_max (int)      — max heal attempts, default 2
+        heal_triggers (set) — trigger name strings; None = all
+        heal_patch (bool)   — write learned ui_hints back to YAML
+    """
+    memory_prefix = ""
+    if use_memory:
+        memory = _read_memory(case.get("product", ""))
+        if memory:
+            memory_prefix = f"【历史经验 — 执行前必读，遇到类似问题优先参考】\n{memory}\n\n"
+
+    task = memory_prefix + fill_placeholders(case["task"].strip(), contact, group, meeting_id, doc)
     if case.get("ui_hints"):
-        hints = fill_placeholders(case["ui_hints"].strip(), contact, group, meeting_id)
+        hints = fill_placeholders(case["ui_hints"].strip(), contact, group, meeting_id, doc)
         task = task + f"\n\n【界面提示】{hints}"
 
     if dry_run:
@@ -171,6 +216,9 @@ def run_case(
             "total_steps": 0,
             "elapsed_ms": 0,
             "steps": [],
+            "heal_attempts": 0,
+            "heal_success": False,
+            "heal_triggers": [],
         }
 
     screenshot_dir = None
@@ -181,14 +229,33 @@ def run_case(
     # Fill placeholders in checkpoints before passing to agent
     raw_checkpoints = case.get("checkpoints", [])
     checkpoints = [
-        fill_placeholders(cp, contact, group, meeting_id)
+        fill_placeholders(cp, contact, group, meeting_id, doc)
         for cp in raw_checkpoints
     ] if raw_checkpoints else None
 
+    # Resolve heal settings
+    heal         = (heal_config or {}).get("heal", False)
+    heal_max     = (heal_config or {}).get("heal_max", 2)
+    heal_triggers = (heal_config or {}).get("heal_triggers", None)
+    heal_patch   = (heal_config or {}).get("heal_patch", True)
+
     run_start = datetime.now()
-    agent = LarkAgent(max_steps=case.get("timeout_steps", 20), screenshot_dir=screenshot_dir)
-    result: RunResult = agent.run(task, checkpoints=checkpoints)
+    agent = LarkAgent(
+        max_steps=case.get("timeout_steps", 20),
+        screenshot_dir=screenshot_dir,
+        heal=heal,
+        heal_max=heal_max,
+        heal_triggers=heal_triggers,
+    )
+    result: RunResult = agent.run(
+        task, checkpoints=checkpoints,
+        case_id=case["id"], case_title=case["title"],
+    )
     run_end = datetime.now()
+
+    # Write heal memory entry when healing produced a result
+    if heal and heal_patch and result.heal_success and result.learned_ui_hints:
+        _write_memory(case.get("product", "unknown"), result.learned_ui_hints)
 
     # Post-execution verification (CLI + VLM)
     verification = None
@@ -205,7 +272,7 @@ def run_case(
                 case_filled["checkpoints"] = checkpoints or []
             if case.get("success_criteria"):
                 case_filled["success_criteria"] = fill_placeholders(
-                    case["success_criteria"], contact, group, meeting_id
+                    case["success_criteria"], contact, group, meeting_id, doc
                 )
             vr = verify(
                 case_filled, final_shot,
@@ -244,6 +311,9 @@ def run_case(
         "elapsed_ms": result.elapsed_ms,
         "expected_steps": case.get("expected_steps"),
         "verification": verification,
+        "heal_attempts": result.heal_attempts,
+        "heal_success": result.heal_success,
+        "heal_triggers": result.heal_triggers,
         "steps": [
             {
                 "step": s.step,
@@ -360,9 +430,24 @@ def main():
         default=DEFAULT_MEETING_ID,
         help="Replace <<MEETING_ID>> placeholder (video conference join case)",
     )
+    parser.add_argument("--doc", default=DEFAULT_DOC,
+                        help="Replace <<TEST_DOC>> placeholder (document name for docs cases)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--delay", type=int, default=5,
                         help="Seconds to wait before starting (default 5)")
+    # Self-healing options
+    parser.add_argument("--heal", action="store_true",
+                        help="Enable self-healing module (default: off)")
+    parser.add_argument("--heal-max", type=int, default=2,
+                        help="Max heal attempts per case (default: 2)")
+    parser.add_argument("--heal-no-patch", action="store_true",
+                        help="Don't write learned ui_hints back to YAML after healing")
+    parser.add_argument("--heal-triggers", default="",
+                        help="Comma-separated trigger types to enable "
+                             "(default: all). Values: explicit_fail, implicit_stuck, "
+                             "explicit_stuck, checkpoint_timeout")
+    parser.add_argument("--use-memory", action="store_true",
+                        help="Inject memory/<product>.md into task context")
     args = parser.parse_args()
 
     case_ids_filter = parse_case_ids(args.case_id)
@@ -390,13 +475,35 @@ def main():
     run_screenshot_dir = _cfg.SCREENSHOT_DIR / f"run_{ts}" if not args.dry_run else None
     print(f"Screenshots: {run_screenshot_dir or '(dry-run, skipped)'}\n")
 
+    heal_config: dict | None = None
+    if args.heal:
+        raw_triggers = args.heal_triggers.strip()
+        heal_config = {
+            "heal": True,
+            "heal_max": args.heal_max,
+            "heal_patch": not args.heal_no_patch,
+            "heal_triggers": (
+                {t.strip() for t in raw_triggers.split(",") if t.strip()}
+                if raw_triggers else None
+            ),
+        }
+        print(f"Self-heal: ON  max={args.heal_max}  "
+              f"triggers={raw_triggers or 'all'}  "
+              f"patch={'yes' if not args.heal_no_patch else 'no'}\n")
+
     results = []
     for i, case in enumerate(cases, 1):
         print(f"\n[{i}/{len(cases)}] {case['id']} — {case['title']}")
-        r = run_case(case, args.contact, args.group, args.meeting_id, args.dry_run, run_screenshot_dir)
+        r = run_case(
+            case, args.contact, args.group, args.meeting_id,
+            args.dry_run, run_screenshot_dir, args.doc,
+            heal_config=heal_config,
+            use_memory=args.use_memory,
+        )
         results.append(r)
         status_str = r["status"].upper()
-        print(f"  => {status_str}  steps={r['total_steps']}  time={r['elapsed_ms']/1000:.1f}s")
+        heal_tag = f"  heal={r['heal_attempts']}" if r.get("heal_attempts") else ""
+        print(f"  => {status_str}  steps={r['total_steps']}  time={r['elapsed_ms']/1000:.1f}s{heal_tag}")
         if r["status"] == "error" and r["steps"]:
             last_err = r["steps"][-1].get("error")
             if last_err:

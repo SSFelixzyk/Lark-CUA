@@ -260,6 +260,31 @@ python tests/run_benchmark.py --product im --dry-run
 
 ---
 
+### 自愈模块
+
+Agent 在执行过程中遇到 checkpoint 长时间未完成时，自动触发自愈：调用 VLM 分析失败原因，将诊断结论和新策略注入对话上下文，让 Agent 在已有历史截图的基础上自行调整路径继续推进。
+
+自愈期间完成目标 checkpoint 后，自动生成一条经验记录（问题 / 解决 / 启发）写入 `memory/<product>.md`，供后续类似任务参考。
+
+```bash
+# 启用自愈
+python tests/run_benchmark.py --case-id DOC_L2_006 --contact 张三 --heal
+
+# 启用自愈 + 读取历史经验
+python tests/run_benchmark.py --case-id DOC_L2_006 --contact 张三 --heal --use-memory
+```
+
+| 参数 | 说明 | 默认 |
+|------|------|------|
+| `--heal` | 启用自愈模块 | 关闭 |
+| `--heal-max N` | 每个用例最多自愈次数 | `2` |
+| `--heal-no-patch` | 自愈后不写 memory 文件 | 写入 |
+| `--use-memory` | 运行前将 memory 文件注入任务上下文 | 关闭 |
+
+当前已实现触发类型：`CHECKPOINT_TIMEOUT`（checkpoint 6 步内未到达）。详见 `docs/self_healing.md`。
+
+---
+
 ### 生成报告
 
 ```bash

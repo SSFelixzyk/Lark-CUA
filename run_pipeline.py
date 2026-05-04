@@ -105,7 +105,10 @@ def step_run_benchmark(
     contact: str,
     group: str,
     meeting_id: str,
+    doc: str,
     delay: int,
+    heal_config: dict | None = None,
+    use_memory: bool = True,
 ) -> Path:
     _section(f"Step 2 — GUI 执行（{len(case_ids)} 个用例）")
     from tests.run_benchmark import load_cases, run_case, save_results, print_summary
@@ -125,10 +128,12 @@ def step_run_benchmark(
     for i, case in enumerate(cases, 1):
         print(f"\n[{i}/{len(cases)}] {case['id']} — {case['title']}")
         r = run_case(case, contact, group, meeting_id,
-                     dry_run=False, run_screenshot_dir=run_screenshot_dir)
+                     dry_run=False, run_screenshot_dir=run_screenshot_dir, doc=doc,
+                     heal_config=heal_config, use_memory=use_memory)
         results.append(r)
+        heal_tag = f"  heal={r['heal_attempts']}" if r.get("heal_attempts") else ""
         print(f"  => {r['status'].upper()}  steps={r['total_steps']}  "
-              f"time={r['elapsed_ms']/1000:.1f}s")
+              f"time={r['elapsed_ms']/1000:.1f}s{heal_tag}")
         if i < len(cases):
             time.sleep(3)   # 用例间等待界面稳定
 
@@ -213,6 +218,8 @@ def main():
                         help="替换 <<TEST_GROUP>> 占位符")
     parser.add_argument("--meeting-id", default="<<MEETING_ID>>",
                         help="替换 <<MEETING_ID>> 占位符")
+    parser.add_argument("--doc",     default="<<TEST_DOC>>",
+                        help="替换 <<TEST_DOC>> 占位符（文档名称，docs 产品用）")
 
     # ── 文档模式专属参数
     parser.add_argument("--levels",    default="L1,L2",
@@ -233,6 +240,18 @@ def main():
                         help="DSL 评审循环最大重试次数（默认 3）")
     parser.add_argument("--no-insights", action="store_true",
                         help="跳过报告 AI 分析（更快）")
+    parser.add_argument("--use-memory", action="store_true",
+                        help="将 memory/<product>.md 注入任务上下文")
+    # ── 自愈模块
+    parser.add_argument("--heal",           action="store_true",
+                        help="启用自愈模块（默认关闭）")
+    parser.add_argument("--heal-max",       type=int, default=2,
+                        help="每个用例最多自愈次数（默认 2）")
+    parser.add_argument("--heal-no-patch",  action="store_true",
+                        help="自愈成功后不回写 ui_hints")
+    parser.add_argument("--heal-triggers",  default="",
+                        help="启用的触发类型，逗号分隔（默认全部）"
+                             "可选：explicit_fail,implicit_stuck,explicit_stuck,checkpoint_timeout")
     args = parser.parse_args()
 
     # ── 打印启动信息
@@ -265,12 +284,28 @@ def main():
         )
 
     # ── Step 2：GUI 执行
+    heal_config: dict | None = None
+    if args.heal:
+        raw_triggers = args.heal_triggers.strip()
+        heal_config = {
+            "heal": True,
+            "heal_max": args.heal_max,
+            "heal_patch": not args.heal_no_patch,
+            "heal_triggers": (
+                {t.strip() for t in raw_triggers.split(",") if t.strip()}
+                if raw_triggers else None
+            ),
+        }
+
     result_path = step_run_benchmark(
         case_ids=case_ids,
         contact=args.contact,
         group=args.group,
         meeting_id=args.meeting_id,
+        doc=args.doc,
         delay=args.delay,
+        heal_config=heal_config,
+        use_memory=args.use_memory,
     )
 
     # ── Step 3：报告
