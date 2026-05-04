@@ -1,8 +1,12 @@
 """
 AI insight generator for benchmark results.
 
+Two report types:
+  generate_test_report() — QA perspective: did Feishu work? bugs found?
+  generate()             — Agent perspective: execution quality, bottlenecks, ui_hints
+
 Reads the result JSON + per-step VLM logs (step{N}_vlm.txt), then calls
-Doubao to produce per-case analysis and recommendations in Markdown.
+Doubao to produce per-case analysis in Markdown.
 """
 
 import sys
@@ -11,7 +15,40 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from llm.doubao_client import chat
 
-_SYSTEM = """\
+_TEST_SYSTEM = """\
+你是飞书产品质量分析专家。根据GUI自动化测试的执行结果，从测试工程师视角给出产品质量报告。
+
+## 分析重点
+- 飞书功能是否正常运作（评估飞书产品本身，不是评估Agent操作是否正确）
+- 测试过程中是否发现飞书的Bug或异常行为
+- 成功/失败的根本原因分析（区分"飞书的问题"和"测试/Agent的问题"）
+
+## 输出格式（严格Markdown）
+
+### 测试结论
+一句话概括：本次测试中飞书功能是否符合预期。
+
+### 功能验证结果
+
+对每个测试用例，给出：
+- **测试目标**：该用例验证了哪个飞书功能点
+- **执行结果**：功能是否正常（PASS/FAIL/INCONCLUSIVE）
+- **关键发现**：成功案例说明什么，失败案例是飞书的Bug还是测试设计问题
+
+### 问题清单（如有）
+
+列举发现的飞书潜在问题，每条包含：
+- 现象描述
+- 复现路径（基于截图/验证数据）
+- 严重程度建议（P0~P3）
+
+### 测试覆盖建议
+基于本次结果，建议下一步补充哪些测试场景。
+
+要求：从产品视角出发，不要将飞书的问题与Agent的操作问题混淆。
+"""
+
+_AGENT_SYSTEM = """\
 你是飞书GUI自动化测试分析专家。根据提供的benchmark测试记录和Agent每步的思维过程，
 给出深入的分析和可操作的建议。
 
@@ -85,30 +122,51 @@ def _fmt_case_summary(case: dict) -> str:
     ])
 
 
-def generate(result_json: dict, screenshot_base: Path | None = None) -> str:
-    """
-    Call Doubao to generate AI insights for the benchmark run.
-
-    Args:
-        result_json:     Parsed benchmark result JSON.
-        screenshot_base: Parent dir with per-run screenshot subdirs (for VLM logs).
-
-    Returns:
-        Markdown string with analysis and recommendations.
-    """
-    cases = [c for c in result_json.get("cases", []) if c.get("status") != "skipped"]
-    if not cases:
-        return "无有效用例数据。"
-
-    # Build user message
-    parts = [
-        f"## 测试概览",
+def _build_overview(result_json: dict) -> list[str]:
+    return [
+        "## 测试概览",
         f"时间戳：{result_json.get('timestamp','')}",
         f"总用例：{result_json.get('total',0)}  通过：{result_json.get('done',0)}  "
         f"TSR：{result_json.get('tsr',0):.1f}%",
         "",
     ]
 
+
+def generate_test_report(result_json: dict, screenshot_base: Path | None = None) -> str:
+    """
+    QA-focused report: did the Feishu feature work correctly? any bugs found?
+    Does not include VLM logs (those are agent internals, not product evidence).
+    """
+    cases = [c for c in result_json.get("cases", []) if c.get("status") != "skipped"]
+    if not cases:
+        return "无有效用例数据。"
+
+    parts = _build_overview(result_json)
+    for case in cases:
+        parts.append(f"## 用例数据：{case['id']}")
+        parts.append(_fmt_case_summary(case))
+        parts.append("")
+
+    messages = [
+        {"role": "system", "content": _TEST_SYSTEM},
+        {"role": "user",   "content": "\n".join(parts)},
+    ]
+    print("[insight] 调用 Doubao 生成 AI 测试报告...")
+    raw = chat(messages, max_tokens=1500)
+    print("[insight] 完成（测试报告）")
+    return raw
+
+
+def generate(result_json: dict, screenshot_base: Path | None = None) -> str:
+    """
+    Agent-focused analysis: execution quality, bottlenecks, ui_hints suggestions.
+    Includes per-step VLM thought logs when available.
+    """
+    cases = [c for c in result_json.get("cases", []) if c.get("status") != "skipped"]
+    if not cases:
+        return "无有效用例数据。"
+
+    parts = _build_overview(result_json)
     for case in cases:
         parts.append(f"## 用例数据：{case['id']}")
         parts.append(_fmt_case_summary(case))
@@ -120,13 +178,11 @@ def generate(result_json: dict, screenshot_base: Path | None = None) -> str:
             parts.append(vlm_logs)
             parts.append("")
 
-    user_content = "\n".join(parts)
     messages = [
-        {"role": "system", "content": _SYSTEM},
-        {"role": "user",   "content": user_content},
+        {"role": "system", "content": _AGENT_SYSTEM},
+        {"role": "user",   "content": "\n".join(parts)},
     ]
-
-    print("[insight] 调用 Doubao 生成 AI 分析...")
+    print("[insight] 调用 Doubao 生成 AI Agent 分析...")
     raw = chat(messages, max_tokens=1500)
-    print("[insight] 完成")
+    print("[insight] 完成（Agent 分析）")
     return raw

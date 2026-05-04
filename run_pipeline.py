@@ -51,7 +51,7 @@ def _abort(msg: str) -> None:
 
 # ── Step 1-A: 单任务 DSL 生成 ─────────────────────────────────────────────────
 
-def step_dsl_generate(task: str, product: str, max_retries: int = 3, skip_eval: bool = False) -> tuple:
+def step_dsl_generate(task: str, product: str | None = None, max_retries: int = 3, skip_eval: bool = False) -> tuple:
     _section("Step 1 — DSL 生成 + 评审")
     if skip_eval:
         from dsl.generator import generate
@@ -167,22 +167,26 @@ def step_report(result_path: Path, publish: bool, no_insights: bool, folder: str
             print("[report] WARNING: FEISHU_REPORT_FOLDER 未设置，跳过飞书发布。")
             return
 
-        insights = None
+        test_insights  = None
+        agent_insights = None
         if not no_insights:
+            shot_arg = shot_base if shot_base.exists() else None
             try:
-                insights = insight_agent.generate(
-                    result_json,
-                    screenshot_base=shot_base if shot_base.exists() else None,
-                )
+                test_insights = insight_agent.generate_test_report(result_json, screenshot_base=shot_arg)
             except Exception as e:
-                print(f"[report] WARNING: AI 分析失败 ({e})，继续发布...")
+                print(f"[report] WARNING: AI 测试报告生成失败 ({e})，继续...")
+            try:
+                agent_insights = insight_agent.generate(result_json, screenshot_base=shot_arg)
+            except Exception as e:
+                print(f"[report] WARNING: AI Agent 分析生成失败 ({e})，继续...")
 
         url = feishu_doc.publish(
             result_json,
             md_path=md_path,
             folder_token=_folder,
             screenshot_base=shot_base if shot_base.exists() else None,
-            insights=insights,
+            test_insights=test_insights,
+            agent_insights=agent_insights,
         )
         print(f"[report] Feishu doc → {url}")
     else:
@@ -209,9 +213,9 @@ def main():
     )
 
     # ── 产品 & 占位符
-    parser.add_argument("--product", default="im",
+    parser.add_argument("--product", default=None,
                         choices=["im", "docs", "calendar", "base", "vc", "mail", "gui"],
-                        help="飞书产品线（默认 im）")
+                        help="飞书产品线（省略时自动从任务描述中识别）")
     parser.add_argument("--contact", default="<<TEST_CONTACT>>",
                         help="替换 <<TEST_CONTACT>> 占位符")
     parser.add_argument("--group",   default="CUA-Lark课题-6",

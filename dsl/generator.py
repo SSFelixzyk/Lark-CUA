@@ -2,8 +2,9 @@
 DSL Generator — natural language → Feishu benchmark YAML case.
 
 Usage:
+    python -m dsl.generator "向于凯成发送消息「Hello」"
     python -m dsl.generator "向于凯成发送消息「Hello」" --product im
-    python -m dsl.generator "打开日历创建明天下午2点的会议" --product calendar --evaluate
+    python -m dsl.generator "打开日历创建明天下午2点的会议" --evaluate
 """
 
 import sys
@@ -25,6 +26,48 @@ PRODUCT_PREFIX = {
     "im": "IM", "docs": "DOC", "calendar": "CAL",
     "base": "BASE", "vc": "VC", "mail": "MAIL", "gui": "GUI",
 }
+
+# ── Product detection ────────────────────────────────────────────────────────
+
+_DETECT_SYSTEM = """\
+你是飞书产品线识别专家。根据用户的测试任务描述，判断涉及哪些飞书产品线。
+
+产品线说明：
+- im:       即时通讯（单聊、群聊、消息发送、文件传输、@提醒）
+- docs:     云文档（文档创建、编辑、评论、分享、协作）
+- calendar: 日历（日程创建、会议安排、提醒、邀请他人）
+- base:     多维表格（表格创建、视图切换、字段配置、数据录入）
+- vc:       视频会议（发起/加入会议、录制、共享屏幕）
+- mail:     邮箱（邮件收发、草稿、联系人、文件夹管理）
+
+规则：
+- 只输出产品线标识符，不输出任何其他内容
+- 如果只涉及一个产品，只输出该标识符（如 im）
+- 如果涉及多个产品，按重要性降序输出，逗号分隔，不加空格（如 calendar,im）
+- 无法判断时输出 im
+"""
+
+
+def detect_products(user_input: str) -> list[str]:
+    """
+    Infer Feishu product line(s) from a natural language task description.
+    Returns a list of product keys ordered by relevance. Falls back to ['im'].
+    """
+    raw = chat(
+        [
+            {"role": "system", "content": _DETECT_SYSTEM},
+            {"role": "user",   "content": user_input},
+        ],
+        max_tokens=30,
+    )
+    tokens = [t.strip().lower() for t in raw.strip().split(",") if t.strip()]
+    valid = [t for t in tokens if t in PRODUCT_PREFIX]
+    if valid:
+        print(f"[generator] detected product(s): {', '.join(valid)}")
+        return valid
+    print(f"[generator] product detection got '{raw.strip()}', falling back to 'im'")
+    return ["im"]
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,19 +160,23 @@ SYSTEM = """\
 
 def build_messages(
     user_input: str,
-    product: str,
+    products: list[str],
     case_id: str,
     previous_yaml: str | None = None,
     suggestions: list[str] | None = None,
 ) -> list[dict]:
-    ui_ctx   = load_ui_context(product)
-    few_shot = load_few_shot(product)
+    primary  = products[0]
+    ui_parts = "\n\n".join(
+        f"### {p.upper()}\n{load_ui_context(p)}" for p in products
+    )
+    few_shot = load_few_shot(primary)
+    label    = "+".join(p.upper() for p in products)
     user_content = f"""\
 ## 本次生成的 case id（请填入 id 字段）
 {case_id}
 
-## 飞书 {product.upper()} 界面说明
-{ui_ctx}
+## 飞书 {label} 界面说明
+{ui_parts}
 
 ## 已有用例参考（参考格式和风格，勿直接复制内容）
 {few_shot}
@@ -189,13 +236,15 @@ def _save(parsed: dict, out_path: Path) -> None:
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 
-def generate(user_input: str, product: str) -> tuple[dict, Path]:
+def generate(user_input: str, product: str | None = None) -> tuple[dict, Path]:
     """Single-shot generation (no evaluate loop). Saves immediately."""
-    case_id  = next_case_id(product)
-    out_path = GENERATED_DIR / product / f"{case_id}.yaml"
+    products = [product] if product else detect_products(user_input)
+    primary  = products[0]
+    case_id  = next_case_id(primary)
+    out_path = GENERATED_DIR / primary / f"{case_id}.yaml"
 
     print(f"[generator] calling Doubao for case {case_id}...")
-    raw    = chat(build_messages(user_input, product, case_id), max_tokens=1500)
+    raw    = chat(build_messages(user_input, products, case_id), max_tokens=1500)
     parsed = _parse_raw(raw, case_id)
     _save(parsed, out_path)
     return parsed, out_path
@@ -203,7 +252,7 @@ def generate(user_input: str, product: str) -> tuple[dict, Path]:
 
 def generate_loop(
     user_input: str,
-    product: str,
+    product: str | None = None,
     max_retries: int = 3,
 ) -> tuple[dict, Path]:
     """
@@ -213,8 +262,10 @@ def generate_loop(
     """
     from dsl.evaluator import evaluate_text, VERDICT_LABEL
 
-    case_id  = next_case_id(product)
-    out_path = GENERATED_DIR / product / f"{case_id}.yaml"
+    products = [product] if product else detect_products(user_input)
+    primary  = products[0]
+    case_id  = next_case_id(primary)
+    out_path = GENERATED_DIR / primary / f"{case_id}.yaml"
 
     previous_yaml: str | None = None
     suggestions:   list[str] | None = None
@@ -223,7 +274,7 @@ def generate_loop(
     for attempt in range(1, max_retries + 1):
         print(f"[generator] attempt {attempt}/{max_retries} — {case_id}")
         messages = build_messages(
-            user_input, product, case_id,
+            user_input, products, case_id,
             previous_yaml=previous_yaml,
             suggestions=suggestions,
         )
@@ -237,7 +288,7 @@ def generate_loop(
         yaml_text = yaml.dump(parsed, allow_unicode=True, default_flow_style=False, sort_keys=False)
 
         print(f"[evaluator] scoring attempt {attempt}...")
-        result = evaluate_text(yaml_text, product, case_id)
+        result = evaluate_text(yaml_text, primary, case_id)
         verdict = result["verdict"]
         overall = result["overall"]
         label   = VERDICT_LABEL.get(verdict, verdict)
@@ -272,9 +323,9 @@ def generate_loop(
 def main():
     parser = argparse.ArgumentParser(description="Generate a Feishu benchmark YAML from natural language")
     parser.add_argument("description", help="Natural language test description")
-    parser.add_argument("--product", required=True,
+    parser.add_argument("--product", default=None,
                         choices=list(PRODUCT_PREFIX.keys()),
-                        help="Target Feishu product")
+                        help="Target Feishu product (auto-detected if omitted)")
     parser.add_argument("--evaluate", action="store_true",
                         help="Run generate→evaluate loop until DSL passes quality check")
     parser.add_argument("--max-retries", type=int, default=3,

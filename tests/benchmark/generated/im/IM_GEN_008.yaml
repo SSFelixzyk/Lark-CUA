@@ -1,0 +1,22 @@
+id: IM_GEN_008
+level: L2
+title: 给<<TEST_CONTACT>>发Hello
+task: 向<<TEST_CONTACT>>发送消息「Hello」
+ui_hints: 全局搜索框位于会话列表区顶部，可按Ctrl+K唤起；消息输入框位于聊天内容区底部，输入完成后按Enter发送
+preconditions:
+- 飞书桌面客户端已登录并处于前台
+- <<TEST_CONTACT>>已存在于联系人列表中
+success_criteria: 聊天记录最底部显示内容为「Hello」的已发送消息气泡
+checkpoints:
+- 与<<TEST_CONTACT>>的单聊界面已打开
+- 内容为「Hello」的消息出现在对话记录底部
+cli_verifications:
+- type: im_message
+  expected_text: Hello
+expected_steps: 4
+timeout_steps: 8
+tags:
+- im
+- send_message
+- core
+generated: true

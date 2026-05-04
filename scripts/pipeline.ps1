@@ -1,7 +1,7 @@
 ﻿# ── Config (edit here) ────────────────────────────────────────────────────────
 $CONTACT     = "于凯成"
 $GROUP       = "CUA-Lark课题-6"
-$PRODUCT     = "im"       # im | docs | calendar | base | vc | mail
+$PRODUCT     = ""         # leave blank to auto-detect from task; or set: im | docs | calendar | base | vc | mail
 $DELAY       = 15         # seconds to wait before GUI actions (switch to Feishu)
 $PUBLISH     = $true      # publish Feishu cloud doc report
 $SKIP_EVAL   = $false     # skip generate→evaluate loop (single-shot)
@@ -27,7 +27,8 @@ for ($i = 1; $i -lt $args.Count; $i++) {
     }
 }
 
-$cmd = "python run_pipeline.py --task `"$TASK`" --product $PRODUCT --contact `"$CONTACT`" --group `"$GROUP`" --delay $DELAY --max-retries $MAX_RETRIES"
+$cmd = "python run_pipeline.py --task `"$TASK`" --contact `"$CONTACT`" --group `"$GROUP`" --delay $DELAY --max-retries $MAX_RETRIES"
+if ($PRODUCT) { $cmd += " --product $PRODUCT" }
 if ($PUBLISH)   { $cmd += " --publish" }
 if ($SKIP_EVAL) { $cmd += " --skip-eval" }
 

@@ -1,0 +1,28 @@
+id: IM_GEN_010
+level: L3
+title: 发消息并预定5点会议
+task: 向<<TEST_CONTACT>>发送消息「hello」，并预定<<DATE>>下午5点的会议
+ui_hints: 可按Ctrl+K唤起全局搜索进入与<<TEST_CONTACT>>的单聊，消息输入框位于聊天内容区底部；创建日程可点击左侧导航栏「日历」图标，新建入口在日历界面顶部
+preconditions:
+- 飞书桌面客户端已登录并处于前台
+- <<TEST_CONTACT>>已在联系人列表中
+- 当前时间早于<<DATE>>下午5点
+success_criteria: 与<<TEST_CONTACT>>的聊天记录底部出现「hello」消息气泡，且<<DATE>>下午5点的日程已显示在日历中
+checkpoints:
+- 与<<TEST_CONTACT>>的单聊界面已打开
+- 消息「hello」已出现在对话记录底部
+- <<DATE>>下午5点的日程已存在于日历列表中
+cli_verifications:
+- type: im_message
+  expected_text: hello
+- type: calendar_event
+  title: 与<<TEST_CONTACT>>的会议
+expected_steps: 6
+timeout_steps: 12
+tags:
+- im
+- calendar
+- send_message
+- create_event
+- cross_product
+generated: true

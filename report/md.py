@@ -96,8 +96,19 @@ def render(result_json: dict, output_path: Path | None = None) -> str:
                 lines.append(f"- {mark} [{method}] {cp} — {reason}")
             lines.append("")
 
-        # AI insights placeholder (filled by insight_agent, inserted via +update append)
-        lines += ["### AI 分析与建议", "", f"（待生成 · {case_id}）", "", "---", ""]
+        # AI placeholders: test report first, then agent analysis
+        lines += [
+            "### AI 测试报告",
+            "",
+            f"（测试报告待生成 · {case_id}）",
+            "",
+            "### AI Agent 分析",
+            "",
+            f"（Agent分析待生成 · {case_id}）",
+            "",
+            "---",
+            "",
+        ]
 
     md = "\n".join(lines)
 

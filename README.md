@@ -4,7 +4,13 @@
 
 用多模态大模型（豆包 2.0 Vision）像真实用户一样看着屏幕操作飞书，完成自动化功能测试，无需元素选择器。
 
-全流程：**自然语言 → DSL 用例生成 → GUI 自动执行 → 双层验证 → AI 分析报告 → 发布飞书文档**
+全流程：**自然语言 → DSL 用例生成 → GUI 自动执行 → 双层验证 → 双份 AI 报告 → 发布飞书文档**
+
+---
+
+## 系统架构
+
+![Lark-CUA 架构图](docs/architecture.png)
 
 ---
 
@@ -14,12 +20,14 @@
 |------|------|
 | **DSL 生成** | 自然语言 → YAML 测试用例（含 ui_hints、cli_verifications、checkpoints） |
 | **文档驱动生成** | 读取飞书云文档 → 自动提取可测功能点 → 批量生成 DSL 用例 |
-| **DSL 评分** | 5 维度 0/1/2 打分（UI 准确性、可执行性、可验证性、难度、完整性） |
-| **GUI Agent** | ReAct 循环：截图 → 豆包 Vision → 解析坐标 → pyautogui 执行 |
+| **DSL 评分** | 6 维度 0/1/2 打分（UI 准确性、可执行性、可验证性、难度、完整性、检查点质量） |
+| **GUI Agent** | ReAct 循环：截图 → 豆包 Vision → 解析坐标 → pyautogui 执行 + 检查点追踪 |
 | **自愈模块** | checkpoint 超时时自动诊断失败原因，注入新策略让 Agent 调整路径继续推进 |
 | **记忆模块** | 自愈成功后将问题/解决/启发写入 `memory/<product>.md`，供后续任务参考 |
 | **双层验证** | CLI（lark-cli 结构化查询）+ VLM（截图断言），支持时间过滤防重复 |
-| **测试报告** | MD 归档 + 飞书云文档（每步截图 + Doubao AI 分析与建议） |
+| **AI 测试报告** | 从测试工程师视角：飞书功能是否正常？发现了哪些 Bug？ |
+| **AI Agent 分析** | 从 Agent 视角：执行质量、瓶颈步骤、ui_hints 改进建议 |
+| **飞书云文档** | MD 归档 + 飞书文档（每步截图 + 两份 AI 分析） |
 | **Benchmark** | 按产品/等级/标签/ID 过滤，截图按 run/case/step 分层保存 |
 
 ---
@@ -45,8 +53,8 @@ Lark-Agent/
 │   └── feishu_api.py           # 飞书开放平台 API（token 管理、DocX、Drive）
 │
 ├── tools/
-│   ├── dsl_generator.py        # 自然语言 → YAML 测试用例
-│   ├── dsl_evaluator.py        # DSL 质量评分（5 维度）
+│   ├── dsl_generator.py        # shim → dsl/generator.py
+│   ├── dsl_evaluator.py        # shim → dsl/evaluator.py
 │   ├── doc_case_generator.py   # 飞书云文档 → 批量 DSL 用例生成
 │   └── report_publisher.py     # 生成 MD 报告 + 发布飞书云文档
 │
@@ -253,6 +261,7 @@ python tools/dsl_evaluator.py tests/benchmark/generated/im/IM_GEN_003.yaml --sav
 | `verifiability` | 成功标准能否从截图判断 |
 | `difficulty` | 难度定级与步骤数是否匹配 |
 | `completeness` | 所有字段是否填写完整 |
+| `checkpoint_quality` | Checkpoint 是否为路径无关的必经状态节点 |
 
 ---
 
@@ -319,7 +328,7 @@ python tools/report_publisher.py tests/results/benchmark_XXXXXX.json --publish -
 
 飞书云文档结构：
 - 执行摘要（TSR、平均步骤、耗时）
-- 每个用例：操作轨迹（步骤文本 + 对应截图）→ 验证结果 → AI 分析与建议
+- 每个用例：操作轨迹（步骤文本 + 对应截图）→ 验证结果 → AI 测试报告 → AI Agent 分析
 
 ---
 
@@ -405,8 +414,8 @@ python tests/vm_runner.py \
 | M2 | 多轮对话历史管理，IM/Calendar/Drive E2E | ✅ 完成 |
 | M3 | 自然语言→DSL 生成 + 5 维评分 | ✅ 完成 |
 | M4 | CLI+VLM 双层验证 + Benchmark 框架 | ✅ 完成 |
-| M5 | AI 分析报告 + 飞书云文档自动发布 | ✅ 完成 |
-| M6 | 自愈式执行，基于飞书文档生成用例 | ✅ 完成 |
+| M5 | 双份 AI 报告（测试报告 + Agent 分析）+ 飞书云文档自动发布 | ✅ 完成 |
+| M6 | 自愈式执行，基于飞书文档批量生成用例 | ✅ 完成 |
 
 ---
 

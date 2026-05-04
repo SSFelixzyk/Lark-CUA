@@ -118,7 +118,9 @@ def publish(
     md_path: Path,
     folder_token: str | None = None,
     screenshot_base: Path | None = None,
-    insights: str | None = None,
+    insights: str | None = None,           # legacy: treated as agent_insights
+    test_insights: str | None = None,
+    agent_insights: str | None = None,
 ) -> str:
     """
     Create a Feishu cloud document from the benchmark result.
@@ -128,11 +130,14 @@ def publish(
         md_path:         Path to the already-rendered MD report file.
         folder_token:    Target Drive folder token.
         screenshot_base: Parent dir containing per-run screenshot subdirectories.
-        insights:        Pre-generated AI insights markdown (from insight_agent).
+        test_insights:   QA-focused AI report (did Feishu work? bugs?).
+        agent_insights:  Agent-focused analysis (execution quality, ui_hints).
+        insights:        Deprecated alias for agent_insights.
 
     Returns:
         Web URL of the created Feishu cloud document.
     """
+    agent_insights = agent_insights or insights
     folder_token = folder_token or config.FEISHU_REPORT_FOLDER
     ts    = result_json.get("timestamp", md_path.stem.replace("benchmark_", ""))
     title = f"飞书GUI测试报告 {ts}"
@@ -163,17 +168,25 @@ def publish(
     elif screenshot_base:
         print(f"[feishu] WARNING: 截图目录不存在 ({screenshot_base})，跳过图片插入")
 
-    # ── Step 3: Replace AI placeholder with real insights ─────────────────────
-    if insights:
-        for case in result_json.get("cases", []):
-            if case.get("status") == "skipped":
-                continue
-            placeholder = f"待生成 · {case['id']}"
-            print(f"[feishu]   写入 AI 分析 {case['id']}...")
+    # ── Step 3: Replace AI placeholders ──────────────────────────────────────
+    for case in result_json.get("cases", []):
+        if case.get("status") == "skipped":
+            continue
+        cid = case["id"]
+        if test_insights:
+            placeholder = f"测试报告待生成 · {cid}"
+            print(f"[feishu]   写入 AI 测试报告 {cid}...")
             try:
-                _replace_placeholder(doc_url, placeholder, insights)
+                _replace_placeholder(doc_url, placeholder, test_insights)
             except Exception as e:
-                print(f"[feishu]     AI 分析写入失败: {e}")
+                print(f"[feishu]     AI 测试报告写入失败: {e}")
+        if agent_insights:
+            placeholder = f"Agent分析待生成 · {cid}"
+            print(f"[feishu]   写入 AI Agent 分析 {cid}...")
+            try:
+                _replace_placeholder(doc_url, placeholder, agent_insights)
+            except Exception as e:
+                print(f"[feishu]     AI Agent 分析写入失败: {e}")
 
-    print(f"[feishu] 完成 → {doc_url}")
+    print(f"[feishu] 完成 -> {doc_url}")
     return doc_url
