@@ -16,6 +16,8 @@
 | **文档驱动生成** | 读取飞书云文档 → 自动提取可测功能点 → 批量生成 DSL 用例 |
 | **DSL 评分** | 5 维度 0/1/2 打分（UI 准确性、可执行性、可验证性、难度、完整性） |
 | **GUI Agent** | ReAct 循环：截图 → 豆包 Vision → 解析坐标 → pyautogui 执行 |
+| **自愈模块** | checkpoint 超时时自动诊断失败原因，注入新策略让 Agent 调整路径继续推进 |
+| **记忆模块** | 自愈成功后将问题/解决/启发写入 `memory/<product>.md`，供后续任务参考 |
 | **双层验证** | CLI（lark-cli 结构化查询）+ VLM（截图断言），支持时间过滤防重复 |
 | **测试报告** | MD 归档 + 飞书云文档（每步截图 + Doubao AI 分析与建议） |
 | **Benchmark** | 按产品/等级/标签/ID 过滤，截图按 run/case/step 分层保存 |
@@ -33,6 +35,7 @@ Lark-Agent/
 ├── agent/
 │   ├── loop.py                 # ReAct 主循环，每步保存截图 + VLM 日志
 │   ├── executor.py             # 解析 + 执行 pyautogui（DPI 自动处理）
+│   ├── healer.py               # 自愈模块：触发检测、诊断、memory 条目生成
 │   ├── verifier.py             # 双层验证：CLI + VLM，支持时间过滤
 │   ├── prompts.py              # 飞书专用 system prompt
 │   └── screenshot.py           # 全屏截图（mss）
@@ -65,8 +68,10 @@ Lark-Agent/
 │           ├── step01_vlm.txt  # 对应步骤的 VLM 原始输出
 │           └── ...
 │
+├── memory/                     # 自愈经验记忆（每个产品一个 .md 文件）
 ├── reports/                    # 生成的 MD 报告
 ├── docs/
+│   ├── self_healing.md         # 自愈与记忆模块设计文档
 │   ├── ui_context/             # 各产品 UI 布局文档（供 DSL 生成使用）
 │   │   └── im.md
 │   └── design.md
@@ -128,6 +133,16 @@ python run_pipeline.py --task "打开与张三的单聊，发送「测试消息 
                        --publish
 ```
 
+加上自愈与记忆：
+
+```bash
+python run_pipeline.py --task "打开与张三的单聊，发送「测试消息 Hello」" \
+                       --product im \
+                       --contact "张三" \
+                       --heal --use-memory \
+                       --publish
+```
+
 ### 流程 B：文档驱动（从飞书云文档批量生成并运行）
 
 ```bash
@@ -136,6 +151,7 @@ python run_pipeline.py --from-doc "https://xxx.feishu.cn/docx/..." \
                        --contact "张三" \
                        --levels L1,L2 \
                        --max-cases 5 \
+                       --heal --use-memory \
                        --publish
 ```
 
