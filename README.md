@@ -12,7 +12,7 @@
 
 ```mermaid
 graph TD
-    %% 定义节点和边框的样式，确保兼容性
+    %% 定义节点和边框的样式
     classDef mainBox fill:#f4f9f4,stroke:#a7cba7,stroke-width:2px,rx:12,ry:12;
     classDef innerBox fill:#fff,stroke:#bfbfbf,stroke-width:1.5px,rx:10,ry:10;
     classDef llmNode fill:#fff1f0,stroke:#f5222d,stroke-width:2px,shape:parallelogram,style:bold;
@@ -46,12 +46,11 @@ graph TD
         end
         class Layer0 mainBox;
 
-        %% 2. DSL 生成层 (修正了这里的 subgraph 定义)
+        %% 2. DSL 生成层
         subgraph Layer1[模块 1: DSL 编译层]
             direction TB
             GenInput[输入 context] --> ActorCriticLoop
             
-            %% 将标题作为 subgraph 名称，删除了 (Max 3) 圆括号
             subgraph ActorCriticLoop[Actor-Critic 生成循环 Max 3 次]
                 direction LR
                 GenAgent(DSL Generator<br>LLM #1):::actor
@@ -84,10 +83,10 @@ graph TD
                 Screen --> PromptGen
                 PromptGen --> VLM
                 VLM --> Exec
-                Exec --> ReActLoop
+                %% 修复处 1: 指向循环体内部的起点，而不是子图本身
+                Exec -.->|下一帧| Screen
             end
             
-            %% 状态机推进与自愈触发
             VLM -- 达到 Checkpoint --> SaveCP[保存截图 CP_idx + 1]
             VLM -- 连续 6 步未达标 --> HealerNetwork[自愈网络]
             
@@ -98,8 +97,9 @@ graph TD
                 Diagnose --> UpdateStrategy
             end
             
-            UpdateStrategy --> ReActLoop
-            YAML --> ReActLoop
+            %% 修复处 2: 外部输入指向内部起点节点
+            UpdateStrategy -->|注入策略| Screen
+            YAML -->|驱动执行| Screen
         end
         class Layer2 mainBox;
 
@@ -157,26 +157,24 @@ graph TD
             Policy_U(UI Hits)
         end
         
-        %% 记忆库本体
         Memory[(经验记忆库<br>memory/product.md)]:::dbNode
     end
     class DB mainBox;
 
-    %% --- 关键数据流 (横跨各层级) ---
+    %% --- 关键数据流 ---
     TaskQueue --> GenInput
     SaveCP --> CLIV
     SaveCP --> VLMV
     
-    %% --- 记忆库交互与注入 (核心进化逻辑) ---
-    %% 1. 写：自愈成功后总结经验
+    %% --- 记忆库交互与注入 ---
     SaveCP -.->|自愈成功触发| MemWrite(LLM heal-b<br>总结 Memory写入):::actor
     MemWrite --> Memory
     ApplicationContainer -- 写轨迹/日志 --> DB
     
-    %% 2. 读：经验注入 Pipeline
     Memory -.->|1. 语义检索| Policy
     Policy -.->|2. 注入| FetchDocs
-    Policy -.->|2. 注入| ReActLoop
+    %% 修复处 3: 避免指向子图，直接指向组装 Prompt 的节点
+    Policy -.->|2. 注入| PromptGen
     Policy -.->|2. 注入| Diagnose
 ```
 
