@@ -1,0 +1,22 @@
+id: IM_GEN_006
+level: L2
+title: 给联系人发测试消息
+task: 向<<TEST_CONTACT>>发送消息「全流程测试001」
+ui_hints: 可按Ctrl+K或点击会话列表顶部搜索框搜索<<TEST_CONTACT>>，消息输入框位于聊天内容区底部，输入后按Enter发送
+preconditions:
+- 飞书桌面客户端已登录并处于前台
+- <<TEST_CONTACT>>存在于联系人列表中
+success_criteria: 与<<TEST_CONTACT>>的对话记录中出现内容为「全流程测试001」的发送方消息气泡
+checkpoints:
+- 与<<TEST_CONTACT>>的单聊窗口已打开
+- 消息「全流程测试001」出现在对话记录中
+cli_verifications:
+- type: im_message
+  expected_text: 全流程测试001
+expected_steps: 4
+timeout_steps: 8
+tags:
+- im
+- send_message
+- core
+generated: true

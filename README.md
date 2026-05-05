@@ -10,6 +10,181 @@
 
 ## 系统架构
 
+```mermaid
+graph TD
+    %% Define styles and shapes
+    classDef mainBox fill:#E6F3E6,stroke:#8EB48E,stroke-width:2px,rx:10,ry:10;
+    classDef innerBox fill:#fff,stroke:#A0A0A0,stroke-width:1.5px,rx:8,ry:8;
+    classDef llmNode fill:#F9EBEA,stroke:#C0392B,stroke-width:2px,shape:parallelogram,style:bold;
+    classDef dbNode fill:#FDEBD0,stroke:#B9770E,stroke-width:2px,shape:cylinder;
+    classDef actor fill:#EBF5FB,stroke:#2E86C1,stroke-width:2px,shape:circle,style:bold;
+    classDef icon fill:none,stroke:none;
+
+    %% 0. Title and Legend
+    subgraph Title[高级 GUI 自动化测试 Agent 系统架构]
+        direction TB
+        TitleText( 基于 LLM/VLM 的进化型 Agent Pipeline )
+    end
+    class Title icon;
+
+    %% Main Application Container
+    subgraph App[自动化测试 Agent 应用]
+        direction TB
+
+        %% 1. Input & Routing
+        subgraph Layer0[模块 0: 输入解析与任务拆解]
+            direction LR
+            NL[自然语言意图] -.-> Parse[解析意图 & 定位 Product]
+            Doc[需求文档 ##] -.-> Segment[按标题分段 & 提取功能点]
+            
+            subgraph Docs[产品 UI 文档库]
+                DocContent(组件文档/UI规范)
+            end
+            
+            Parse --> FetchDocs[注入对应产品 UI 文档]
+            FetchDocs -.-> Docs
+            Segment --> TaskQueue[生成批量测试队列]
+        end
+        class Layer0 mainBox;
+
+        %% 2. DSL Generation
+        subgraph Layer1[模块 1: DSL 编译层]
+            direction TB
+            GenInput[输入 context] --> GenLoop
+            
+            subgraph GenLoop[Actor-Critic 生成循环 (Max 3)]
+                direction LR
+                GenAgent(DSL Generator<br>LLM #1):::actor
+                EvalAgent(DSL Evaluator<br>LLM #2):::actor
+                GenAgent -- 草稿 --> EvalAgent
+                EvalAgent -- 拒绝: 建议 --> GenAgent
+            end
+            
+            GenLoop -- Pass --> YAML[输出: YAML 测试用例<br>Task / Checkpoints / UI Hints]
+        end
+        class Layer1 mainBox;
+
+        %% 3. GUI Execution Engine
+        subgraph Layer2[模块 2: 多模态 GUI 执行引擎]
+            direction TB
+            
+            subgraph ReActLoop[ReAct 循环 (Max 30)]
+                direction TB
+                subgraph Perception[感知]
+                    Screen(Screenshot<br>无LLM)
+                    PromptGen[组装 Prompt<br>System+History+Image+CP]
+                end
+                
+                VLM(Doubao VLM<br>推理 Thought & Action):::llmNode
+                
+                subgraph Execution[动作执行]
+                    Exec[executor.py<br>pyautogui 坐标执行]
+                end
+                
+                Screen --> PromptGen
+                PromptGen --> VLM
+                VLM --> Exec
+                Exec --> ReActLoop
+            end
+            
+            %% State Machine logic
+            VLM -- Checkpoint Reached --> SaveCP[保存截图 CP_idx + 1]
+            VLM -- 连续 6 步未达标 --> Heal[Healer 自愈网络]
+            
+            %% Self-Healing sub-pipeline
+            subgraph Heal[自愈子流程]
+                direction LR
+                Diagnose(LLM heal-a<br>诊断并生成新策略):::actor
+                UpdateStrategy[注入 new_strategy]
+                Diagnose --> UpdateStrategy
+            end
+            
+            UpdateStrategy --> ReActLoop
+            YAML --> ReActLoop
+        end
+        class Layer2 mainBox;
+
+        %% 4. Dual Verification
+        subgraph Layer3[模块 3: 双轨验证层]
+            direction TB
+            Verifier[Agent Verifier]
+            
+            subgraph Verifiers[验证器]
+                direction LR
+                CLIV(CLI Verifier<br>lark-cli 结构化查询):::actor
+                VLMV(VLM Visual<br>视觉检查点):::llmNode
+            end
+            
+            SaveCP --> Verifier
+            Verifier --> CLIV
+            Verifier --> VLMV
+        end
+        class Layer3 mainBox;
+
+        %% 5. Reporting & Insight
+        subgraph Layer4[模块 4: 报告与洞察层]
+            direction TB
+            InsightAgent[Insight Agent]
+            
+            subgraph Reports[双视角报告]
+                direction LR
+                QAR(QA视角: 功能点与Bug)
+                AgentR(Agent视角: 性能瓶颈提示)
+            end
+            
+            CLIV --> InsightAgent
+            VLMV --> InsightAgent
+            InsightAgent --> QAR:::llmNode
+            InsightAgent --> AgentR:::llmNode
+        end
+        class Layer4 mainBox;
+
+    end
+    class App mainBox;
+
+    %% 6. Evolutionary Database
+    subgraph DB[智能演进数据库 (Evolutionary DB)]
+        direction TB
+        subgraph Logs[数据日志 (Logs)]
+            Logs_S(结构化日志)
+            Logs_I(截图数据)
+        end
+        subgraph Trace[轨迹分析 (Analysis)]
+            Trace_P(路径规划)
+            Trace_A(动作记录)
+        end
+        subgraph Policy[策略更新 (Policies)]
+            Policy_H(Heuristic solution)
+            Policy_U(UI Hits)
+        end
+        
+        %% The Memory itself
+        Memory[(经验记忆库<br>memory/<product>.md)]:::dbNode
+    end
+    class DB mainBox;
+
+    %% --- Data Flows (Connecting the Layers) ---
+    TaskQueue --> GenInput
+    SaveCP --> CLIV
+    SaveCP --> VLMV
+    
+    %% --- Memory/Database Interaction (Crucial) ---
+    App -- 写: 轨迹/日志 --> DB
+    SaveCP -.->|自愈成功触发| MemWrite(LLM heal-b<br>总结 Memory写入):::actor
+    MemWrite --> Memory
+    
+    %% Memory Injection (Addressing user question)
+    Memory -.->|1. 高效检索| Policy
+    Policy -.->|2. 注入| FetchDocs
+    Policy -.->|2. 注入| ReActLoop
+
+    %% Agent Icons and details
+    GenAgent === "1. 解析任务\n2. 协调工具"
+    GenAgent === "(King/Queen Icons)"
+    Exec === "(Execution Bot)"
+    Diagnose === "(Healer Bot)"
+```
+
 ![Lark-CUA 架构图](docs/architecture.png)
 
 ---

@@ -1,0 +1,23 @@
+id: IM_GEN_005
+level: L2
+title: 给于凯成发测试消息
+task: 使用Ctrl+K唤起全局搜索，搜索联系人「<<TEST_CONTACT>>」，进入与其的单聊界面，点击底部「消息输入框」输入「全流程测试001」，按Enter发送消息。
+ui_hints: Ctrl+K可快速唤起全局搜索，搜索框位于会话列表区顶部；消息输入框位于聊天内容区底部中间，Enter键可快速发送消息。
+preconditions:
+- 飞书桌面客户端已登录并处于前台
+- 联系人「<<TEST_CONTACT>>」已在好友列表中
+success_criteria: 聊天记录最底部出现内容为「全流程测试001」的消息气泡
+checkpoints:
+- 全局搜索结果中出现联系人「<<TEST_CONTACT>>」
+- 已进入与<<TEST_CONTACT>>的单聊界面，顶部显示联系人名称
+- 「全流程测试001」消息出现在聊天记录区域底部
+cli_verifications:
+- type: im_message
+  expected_text: 全流程测试001
+expected_steps: 4
+timeout_steps: 8
+tags:
+- im
+- send_message
+- core
+generated: true
