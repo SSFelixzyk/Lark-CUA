@@ -61,7 +61,7 @@ def diagnose_and_heal(
     task: str,
     recent_history: list[dict],
     screenshot_path: Path,
-    trigger: HealTrigger = HealTrigger.EXPLICIT_FAIL,
+    trigger: HealTrigger = HealTrigger.CHECKPOINT_TIMEOUT,
 ) -> dict:
     """
     Analyze failure and propose a recovery strategy.
