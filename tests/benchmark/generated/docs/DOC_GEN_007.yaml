@@ -1,0 +1,19 @@
+id: DOC_GEN_007
+level: L2
+title: 文档评论@联系人
+task: 「在云文档评论中@提及<<TEST_CONTACT>>」
+ui_hints: 文档右侧边栏顶部第一个为评论入口，评论输入框底部工具栏可点击@按钮唤起联系人选择列表
+preconditions:
+- 飞书客户端已正常登录
+- 已打开一篇拥有评论权限的云文档
+success_criteria: 已发布的评论内容中可识别到@<<TEST_CONTACT>>的提及标记
+checkpoints:
+- 云文档评论输入框已打开并处于可编辑状态
+- 评论内容中出现@<<TEST_CONTACT>>的蓝色标识
+expected_steps: 4
+timeout_steps: 8
+tags:
+- docs
+- comment
+- mention
+generated: true

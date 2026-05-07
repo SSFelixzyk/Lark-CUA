@@ -1,0 +1,20 @@
+id: DOC_GEN_009
+level: L2
+title: 添加文档协作者设权限
+task: 「为当前云文档添加<<TEST_CONTACT>>为协作者并设置「阅读/编辑」权限」
+ui_hints: 文档编辑区顶部header右侧的「分享」按钮，点击后弹出的面板可搜索添加协作者、配置对应权限
+preconditions:
+- 飞书客户端已登录并处于正常使用状态
+- 已打开需要设置权限的目标云文档页面
+- 当前操作用户拥有该文档的协作者管理权限
+success_criteria: 分享面板的协作者列表中可见<<TEST_CONTACT>>，对应权限显示为「阅读/编辑」
+checkpoints:
+- 文档分享设置面板已成功弹出
+- <<TEST_CONTACT>>已出现在协作者列表且权限为「阅读/编辑」
+expected_steps: 4
+timeout_steps: 8
+tags:
+- docs
+- permission
+- collaboration
+generated: true

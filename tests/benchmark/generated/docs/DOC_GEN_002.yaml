@@ -1,0 +1,19 @@
+id: DOC_GEN_002
+level: L2
+title: 文档插入任务列表
+task: 「在飞书云文档中插入「任务列表」内容块」
+ui_hints: 悬停编辑区目标行左侧可呼出「+」插入按钮，或点击编辑区顶部居中位置的「插入」工具栏选项，均可找到任务列表入口
+preconditions:
+- 飞书已登录并进入云文档模块
+- 已打开一个可编辑的飞书云文档
+success_criteria: 文档编辑区内已显示可勾选的任务列表条目
+checkpoints:
+- 文档处于可编辑状态，光标已定位到目标插入位置
+- 任务列表已出现在文档编辑区对应插入位置
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- content_insert
+- smoke
+generated: true

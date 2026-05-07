@@ -1,0 +1,18 @@
+id: DOC_GEN_008
+level: L2
+title: 分享文档给指定联系人
+task: 将当前打开的云文档分享给「<<TEST_CONTACT>>」
+ui_hints: 分享按钮位于文档编辑/预览区顶部header右上角区域
+preconditions:
+- 飞书客户端已正常登录
+- 已打开任意待分享的云文档页面
+success_criteria: 文档分享弹窗中可见<<TEST_CONTACT>>已在协作者列表中，或弹出分享成功提示
+checkpoints:
+- 文档分享弹窗已成功打开
+- <<TEST_CONTACT>>已被添加为分享对象
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- share
+generated: true

@@ -1,0 +1,19 @@
+id: DOC_GEN_010
+level: L2
+title: 复制内容专属链接
+task: 「复制文档选中内容或评论的「专属链接」」
+ui_hints: 选中正文内容后弹出的悬浮工具栏右侧「更多」按钮、评论卡片右上角「...」更多菜单中可找到「复制专属链接」选项
+preconditions:
+- 飞书已登录，处于云文档页面
+- 存在至少1篇包含正文内容（或已有评论）的云文档
+success_criteria: 页面弹出「链接已复制到剪贴板」的成功提示
+checkpoints:
+- 目标云文档的编辑/预览页面已打开
+- 系统弹出链接复制成功的toast提示
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- copy
+- link
+generated: true

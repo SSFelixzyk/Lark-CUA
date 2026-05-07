@@ -1,0 +1,19 @@
+id: DOC_GEN_005
+level: L2
+title: 文档插入有序无序列表
+task: 「在云文档中插入「有序/无序列表」内容块」
+ui_hints: 编辑区顶部左侧工具栏「样式」下拉框可选择有序/无序列表；或目标行首左侧悬停出现的「+」按钮点击后可选列表类型
+preconditions:
+- 飞书客户端已登录
+- 已打开任意可编辑的云文档界面
+success_criteria: 文档编辑区可见插入的有序/无序列表结构，样式生效
+checkpoints:
+- 云文档编辑界面已激活，编辑区可交互
+- 有序/无序列表已显示在文档编辑区对应位置
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- edit
+- insert
+generated: true

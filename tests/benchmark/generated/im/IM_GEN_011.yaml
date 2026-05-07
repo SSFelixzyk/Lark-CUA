@@ -1,0 +1,22 @@
+id: IM_GEN_011
+level: L2
+title: 向测试联系人发Hello
+task: 向<<TEST_CONTACT>>发送消息「Hello」
+ui_hints: 可按Ctrl+K或点击会话列表顶部搜索框，搜索<<TEST_CONTACT>>进入单聊；消息输入框位于右侧聊天内容区底部，输入后按Enter发送。
+preconditions:
+- 飞书桌面客户端已登录并处于前台
+- <<TEST_CONTACT>>已存在于联系人列表中
+success_criteria: 聊天记录最底部出现己方发送的内容为「Hello」的消息气泡
+checkpoints:
+- 与<<TEST_CONTACT>>的单聊界面已打开
+- 内容为「Hello」的消息出现在对话记录底部
+cli_verifications:
+- type: im_message
+  expected_text: Hello
+expected_steps: 3
+timeout_steps: 6
+tags:
+- im
+- send_message
+- core
+generated: true

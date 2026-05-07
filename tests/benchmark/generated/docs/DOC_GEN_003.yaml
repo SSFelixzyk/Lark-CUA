@@ -1,0 +1,19 @@
+id: DOC_GEN_003
+level: L2
+title: 文档中@测试联系人
+task: 「在云文档中@提及联系人<<TEST_CONTACT>>」
+ui_hints: 文档编辑区顶部工具栏「@」按钮位于插入控件右侧，点击可唤起联系人选择面板
+preconditions:
+- 飞书客户端已登录，进入云文档模块
+- 已有可编辑的云文档已打开并进入编辑状态
+success_criteria: 文档编辑区可见高亮显示的@<<TEST_CONTACT>>内容
+checkpoints:
+- 文档编辑区光标已定位到待插入位置
+- '@<<TEST_CONTACT>>内容已插入文档并高亮显示'
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- edit
+- mention
+generated: true

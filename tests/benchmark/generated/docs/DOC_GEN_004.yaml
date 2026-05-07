@@ -1,0 +1,19 @@
+id: DOC_GEN_004
+level: L2
+title: 文档设置联系人时间提醒
+task: 「在云文档中为<<TEST_CONTACT>>设置「时间提醒」」
+ui_hints: 文档编辑区顶部工具栏中间位置的「@」按钮，点击后可选择联系人及添加时间提醒
+preconditions:
+- 飞书客户端已正常登录
+- 已进入目标云文档的编辑界面
+success_criteria: 文档编辑区内可见标注了时间提醒的@<<TEST_CONTACT>>内容
+checkpoints:
+- 目标云文档编辑界面已打开
+- 文档内容中已存在带时间提醒的@<<TEST_CONTACT>>元素
+expected_steps: 3
+timeout_steps: 6
+tags:
+- docs
+- edit
+- reminder
+generated: true

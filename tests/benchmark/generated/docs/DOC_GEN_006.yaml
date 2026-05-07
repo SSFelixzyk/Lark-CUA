@@ -1,0 +1,20 @@
+id: DOC_GEN_006
+level: L2
+title: 添加文档划词评论
+task: 对文档选中内容添加「测试划词评论」
+ui_hints: 选中文本后，点击选中区域上方浮动工具栏右侧的评论按钮，评论输入框位于右侧评论面板
+preconditions:
+- 飞书客户端已成功登录
+- 已打开一篇可编辑的飞书云文档
+- 文档内存在可选中的文本内容
+success_criteria: 选中的文本旁显示评论标记，右侧评论面板可见「测试划词评论」内容
+checkpoints:
+- 目标文本内容处于选中高亮状态
+- 「测试划词评论」已显示在右侧评论面板
+expected_steps: 4
+timeout_steps: 8
+tags:
+- docs
+- comment
+- edit
+generated: true
